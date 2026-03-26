@@ -1,0 +1,48 @@
+{
+    "name": "3neti/wallet",
+    "description": "Custom wallet for X-Change",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Lester Hurtado",
+            "email": "lester@hurtado.ph"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "LBHurtado\\Wallet\\": "src/",
+            "LBHurtado\\Wallet\\Database\\Factories\\": "database/factories/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "LBHurtado\\Wallet\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "LBHurtado\\Wallet\\WalletServiceProvider"
+            ]
+        }
+    },
+    "require": {
+        "spatie/laravel-data": "^4.15",
+        "lorisleiva/laravel-actions": "^2.9",
+        "brick/money": "^0.10.1",
+        "bavix/laravel-wallet": "^11.4"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.3",
+        "pestphp/pest": "^3.8"
+    },
+    "scripts": {
+        "test": "vendor/bin/pest"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
