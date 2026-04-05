@@ -14,6 +14,13 @@ class SystemUserResolverService
         $identifier = Config::get('account.system_user.identifier');
         $column = Config::get('account.system_user.identifier_column', 'uuid');
 
+        if (! is_string($modelClass) || $modelClass === '' || ! class_exists($modelClass)) {
+            throw new SystemUserNotFoundException(
+                'The configured account.system_user.model is missing or invalid. '
+                .'Set ACCOUNT_SYSTEM_USER_MODEL or override account.system_user.model in your app/tests.'
+            );
+        }
+
         $user = $modelClass::where($column, $identifier)->first();
 
         if (! ($user instanceof Wallet)) {

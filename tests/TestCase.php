@@ -11,7 +11,6 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->loginTestUser(); // Log in a test user for all tests
         Factory::guessFactoryNamesUsing(
             fn (string $modelName) => 'LBHurtado\\Wallet\\Database\\Factories\\'.class_basename($modelName).'Factory'
         );
@@ -23,6 +22,7 @@ abstract class TestCase extends BaseTestCase
 
         // Load configuration files
         $this->loadConfig();
+        $this->loginTestUser(); // Log in a test user for all tests
     }
 
     protected function getPackageProviders($app)
@@ -52,8 +52,8 @@ abstract class TestCase extends BaseTestCase
         // Optional: Set web guard as the default
         $app['config']->set('auth.defaults.guard', 'web');
 
-        // Run the migration from the local package
-        $userMigration = include __DIR__.'/../database/migrations/0001_01_01_000000_create_users_table.php';
+        // Run the test-only user migration; the package itself should not own an app users table.
+        $userMigration = include __DIR__.'/database/migrations/0001_01_01_000000_create_users_table.php';
         $userMigration->up();
 
         // Dynamically include and run all migrations from vendor/bavix/laravel-wallet/database
@@ -92,6 +92,14 @@ abstract class TestCase extends BaseTestCase
             'wallet',
             require __DIR__.'/../config/wallet.php'
         );
+
+        $this->app['config']->set(
+            'account',
+            require __DIR__.'/../config/account.php'
+        );
+
+        $this->app['config']->set('account.system_user.model', User::class);
+        $this->app['config']->set('account.system_user.identifier', 'test@example.com');
     }
 
     /**
