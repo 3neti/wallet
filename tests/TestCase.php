@@ -3,29 +3,32 @@
 namespace LBHurtado\Wallet\Tests;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use LBHurtado\Wallet\Tests\Models\User;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    use RefreshDatabase;
+
     protected function setUp(): void
     {
         parent::setUp();
+
         Factory::guessFactoryNamesUsing(
             fn (string $modelName) => 'LBHurtado\\Wallet\\Database\\Factories\\'.class_basename($modelName).'Factory'
         );
-        // Set the base path for the package
+
         if (! defined('TESTING_PACKAGE_PATH')) {
             define('TESTING_PACKAGE_PATH', __DIR__.'/../resources/documents');
         }
-        $this->loadEnvironment();
 
-        // Load configuration files
+        $this->loadEnvironment();
         $this->loadConfig();
-        $this->loginTestUser(); // Log in a test user for all tests
+        $this->loginTestUser();
     }
 
-    protected function getPackageProviders($app)
+    protected function getPackageProviders($app): array
     {
         return [
             \LBHurtado\Wallet\WalletServiceProvider::class,
@@ -33,60 +36,46 @@ abstract class TestCase extends BaseTestCase
         ];
     }
 
-    public function getEnvironmentSetUp($app)
+    protected function defineEnvironment($app): void
     {
-        config()->set('database.default', 'testing');
+        $app['config']->set('database.default', 'testing');
 
-        config()->set('data.validation_strategy', 'always');
-        config()->set('data.max_transformation_depth', 6);
-        config()->set('data.throw_when_max_transformation_depth_reached', 6);
-        config()->set('data.normalizers', [
+        $app['config']->set('data.validation_strategy', 'always');
+        $app['config']->set('data.max_transformation_depth', 6);
+        $app['config']->set('data.throw_when_max_transformation_depth_reached', 6);
+        $app['config']->set('data.normalizers', [
             \Spatie\LaravelData\Normalizers\ModelNormalizer::class,
-            // Spatie\LaravelData\Normalizers\FormRequestNormalizer::class,
             \Spatie\LaravelData\Normalizers\ArrayableNormalizer::class,
             \Spatie\LaravelData\Normalizers\ObjectNormalizer::class,
             \Spatie\LaravelData\Normalizers\ArrayNormalizer::class,
             \Spatie\LaravelData\Normalizers\JsonNormalizer::class,
         ]);
 
-        // Optional: Set web guard as the default
         $app['config']->set('auth.defaults.guard', 'web');
-
-        // Run the test-only user migration; the package itself should not own an app users table.
-        $userMigration = include __DIR__.'/database/migrations/0001_01_01_000000_create_users_table.php';
-        $userMigration->up();
-
-        // Dynamically include and run all migrations from vendor/bavix/laravel-wallet/database
-        //        $migrationPath = base_path('vendor/bavix/laravel-wallet/database/migrations');
-        $migrationPath = __DIR__.'/../vendor/bavix/laravel-wallet/database';
-
-        foreach (scandir($migrationPath) as $migrationFile) {
-            if (pathinfo($migrationFile, PATHINFO_EXTENSION) === 'php') {
-                $migration = include $migrationPath.'/'.$migrationFile;
-                $migration->up();
-            }
-        }
-
     }
 
-    // Define a reusable method for logging in a user
-    protected function loginTestUser()
+    protected function defineDatabaseMigrations(): void
     {
-        $user = new User([
-            'id' => 1, // Unique ID for the user
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'password' => 'password',
+        $this->loadMigrationsFrom([
+            __DIR__.'/database/migrations',
+            $this->getBavixWalletMigrationPath(),
         ]);
-        $user->save();
-
-        $this->actingAs($user); // Simulate authentication as this user
     }
 
-    /**
-     * Load the package configuration files.
-     */
-    protected function loadConfig()
+    protected function loginTestUser(): void
+    {
+        $user = User::query()->firstOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => 'password',
+            ]
+        );
+
+        $this->actingAs($user, 'web');
+    }
+
+    protected function loadConfig(): void
     {
         $this->app['config']->set(
             'wallet',
@@ -102,17 +91,25 @@ abstract class TestCase extends BaseTestCase
         $this->app['config']->set('account.system_user.identifier', 'test@example.com');
     }
 
-    /**
-     * Load the `.env.wallet` file, if it exists.
-     *
-     * @return void
-     */
-    protected function loadEnvironment()
+    protected function loadEnvironment(): void
     {
         $path = __DIR__.'/../.env';
 
         if (file_exists($path)) {
             \Dotenv\Dotenv::createImmutable(dirname($path), '.env')->load();
         }
+    }
+
+    protected function getBavixWalletMigrationPath(): string
+    {
+        $reflection = new \ReflectionClass(\Bavix\Wallet\WalletServiceProvider::class);
+
+        $path = dirname($reflection->getFileName(), 2) . '/database';
+
+        if (! is_dir($path)) {
+            throw new \RuntimeException('Unable to locate Bavix wallet migrations.');
+        }
+
+        return $path;
     }
 }
