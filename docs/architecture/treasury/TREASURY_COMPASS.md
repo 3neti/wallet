@@ -8,6 +8,8 @@ Phase 1 current-behavior characterization was runtime-verified on 2026-07-17. Lo
 
 The first focused run exposed one test-only characterization error: Laravel's `InteractsWithSockets` trait contributes a public `socket` property to `DisbursementFailed`. The expectation was corrected without changing production code. No existing production-behavior mismatch was found.
 
+Phase 2 planning-only Treasury DTOs and contracts were completed and runtime-verified on 2026-07-17. The focused Phase 2 suite passed with 5 tests / 142 assertions, and the full package suite passed with 32 tests / 268 assertions.
+
 This document captures the current architectural direction for evolving `3neti/wallet` into the Treasury layer of Settlement OS. It is intended as persisted migration memory for future Codex sessions working inside the wallet package.
 
 No Treasury runtime implementation has been approved by this compass entry.
@@ -191,11 +193,10 @@ Observed current capabilities:
 
 Bavix owns the wallet, transaction, and transfer schema/migrations and the current money-movement primitives. `3neti/wallet` owns the integration configuration and standardizing behavior around those primitives. Configuring Bavix model and table names does not transfer schema ownership to this package.
 
-Observed current gaps:
+Observed current gaps after Phase 2:
 
-- no first-class Inventory contract;
-- no first-class Allocation contract;
-- no first-class Slice contract;
+- planning DTOs exist for Inventory, Allocation, Slice, Draw, Release, Repayment, and Reversal, but no runtime state or persistence exists;
+- the aggregate planning contract has no production implementation or container binding;
 - no first-class reserve/capture/release/repay/reverse API;
 - no idempotent reservation keys;
 - no reservation ledger/read model;
@@ -216,6 +217,24 @@ The Phase 1 test suite now characterizes:
 - the unchanged `DisbursementFailed` traits, public properties (including trait-provided `socket`), constructor types/default, and direct Voucher type dependency.
 
 These tests are runtime-verified against the versions recorded in the existing lock file.
+
+## Phase 2 Planning Baseline
+
+Phase 2 adds immutable package-owned planning DTOs:
+
+- `TreasuryInventoryData`;
+- `TreasuryAllocationData`;
+- `TreasurySliceData`;
+- `TreasuryDrawData`;
+- `TreasuryReleaseData`;
+- `TreasuryRepaymentData`;
+- `TreasuryReversalData`.
+
+The DTOs use scalar references, integer minor units, explicit currency, descriptive status, caller-supplied idempotency keys, optional opaque external references, and metadata. Status values describe a plan only; Phase 2 does not define or enforce a state machine. Idempotency keys are represented but not persisted or enforced.
+
+`TreasuryPlanningContract` provides `planInventory`, `planAllocation`, `planSlice`, `planDraw`, `planRelease`, `planRepayment`, and `planReversal`. It accepts and returns only package-owned DTOs.
+
+There is no production implementation, service-provider binding, persistence, Bavix dependency, money movement, or balance mutation. A test-local pass-through implementation proves that exercising every planning method leaves wallet balance, Bavix transaction count, and transfer count unchanged.
 
 ## Legacy Boundary Debt
 
@@ -295,6 +314,10 @@ All are planning-only today.
 - The existing direct Voucher dependency is legacy boundary debt, not target ownership.
 - Removing that dependency is outside the approved Phase 0/Phase 1 characterization scope.
 - Phase 1 characterization must not introduce Inventory, Allocation, Slice, reservation, or other Treasury runtime semantics into existing wallet tests.
+- Phase 2 DTOs and the planning contract are descriptive boundaries only, not executable Treasury semantics.
+- Treasury amounts are represented as integer minor units with an explicit currency string.
+- External references remain opaque strings; no x-change, Voucher, Facility, or Lien classes may cross the contract.
+- Phase 2 status and idempotency fields carry planning intent but are not validated, stored, or enforced.
 
 ## Open Questions
 
@@ -315,7 +338,9 @@ All are planning-only today.
 
 ## Immediate Recommendation
 
-Phase 1 is green. The next planned architecture slice is **Phase 2 — Planning-only Treasury DTOs and Contracts**, subject to explicit approval. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
+Phase 2 is green. The next planned architecture slice is **Phase 3 — Null Treasury Runtime**, subject to explicit approval. Phase 3 must remain non-mutating, observable, and incapable of moving money or writing Treasury state.
+
+Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
 
 The existing `composer.lock` mismatch remains a package-maintenance risk. It was not corrected during verification because the slice explicitly required using the existing lock where possible and avoiding a lock update.
 
@@ -334,7 +359,7 @@ Do not change:
 
 Do not add migrations until the Treasury grammar and package boundary are approved.
 
-Initial scaffolding may add planning-only DTOs/contracts/tests for:
+Phase 2 adds planning-only DTOs/contracts/tests for:
 
 - `TreasuryInventoryData`;
 - `TreasuryAllocationData`;
@@ -351,7 +376,7 @@ Initial scaffolding may add planning-only DTOs/contracts/tests for:
 - repay;
 - reverse.
 
-Initial implementations should be null/planning-only unless explicitly approved.
+No production implementation was added in Phase 2. A null runtime remains a separately approved Phase 3 concern.
 
 ## Required Test Posture
 
@@ -366,8 +391,8 @@ Future slices should prove:
 
 ## Current Compass Position
 
-Treasury grammar is the canonical target for wallet evolution, and the documents in this directory are the Phase 0 architecture baseline.
+Treasury grammar is the canonical target for wallet evolution. Phase 0 documentation, Phase 1 behavior characterization, and Phase 2 planning types now form the approved architecture baseline.
 
 x-change's current reservation/release terminology should be treated as bridge terminology until wallet-side Treasury contracts stabilize. Reservation remains an implementation detail of Allocation.
 
-No Treasury runtime, contract, migration, balance change, event change, or production-code refactor has been approved. Phase 1 adds protection through tests and documentation only.
+The Phase 2 planning contract and DTOs are approved as non-mutating descriptive types. No Treasury runtime implementation, service binding, persistence, migration, balance change, event change, or production-code refactor has been approved.
