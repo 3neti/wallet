@@ -4,8 +4,10 @@ namespace LBHurtado\Wallet;
 
 use Illuminate\Support\ServiceProvider;
 use LBHurtado\Wallet\Providers\EventServiceProvider;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPlanningContract;
+use LBHurtado\Wallet\Treasury\ReadModels\AbsentTreasuryAllocationReadModelService;
 use LBHurtado\Wallet\Treasury\ReadModels\WalletBalanceInventoryReadModelService;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryPlanningRuntime;
 
@@ -33,6 +35,11 @@ class WalletServiceProvider extends ServiceProvider
         $this->app->singleton(
             TreasuryInventoryReadModelContract::class,
             WalletBalanceInventoryReadModelService::class
+        );
+
+        $this->app->singleton(
+            TreasuryAllocationReadModelContract::class,
+            AbsentTreasuryAllocationReadModelService::class
         );
     }
 
