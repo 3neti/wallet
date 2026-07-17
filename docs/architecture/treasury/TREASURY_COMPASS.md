@@ -12,9 +12,11 @@ Phase 2 planning-only Treasury DTOs and contracts were completed and runtime-ver
 
 Phase 3 Null Treasury Runtime was completed and runtime-verified on 2026-07-17. The focused Treasury suite passed with 8 tests / 244 assertions, and the full package suite passed with 35 tests / 370 assertions.
 
+Phase 4 Inventory Read Models was completed and runtime-verified on 2026-07-17. The focused Treasury suite passed with 13 tests / 324 assertions, the focused Phase 1 characterization suite passed with 23 tests / 93 assertions, and the full package suite passed with 40 tests / 450 assertions.
+
 This document captures the current architectural direction for evolving `3neti/wallet` into the Treasury layer of Settlement OS. It is intended as persisted migration memory for future Codex sessions working inside the wallet package.
 
-No stateful, persistent, or money-moving Treasury runtime has been approved by this compass entry. The approved Phase 3 implementation is null/planning-only.
+No stateful, persistent, or money-moving Treasury runtime has been approved by this compass entry. Phase 3 remains null/planning-only, and Phase 4 adds only a read-only wallet-backed baseline.
 
 ## Context Source
 
@@ -195,9 +197,10 @@ Observed current capabilities:
 
 Bavix owns the wallet, transaction, and transfer schema/migrations and the current money-movement primitives. `3neti/wallet` owns the integration configuration and standardizing behavior around those primitives. Configuring Bavix model and table names does not transfer schema ownership to this package.
 
-Observed current gaps after Phase 3:
+Observed current gaps after Phase 4:
 
-- planning DTOs and a bound null runtime exist for Inventory, Allocation, Slice, Draw, Release, Repayment, and Reversal, but no Treasury state or persistence exists;
+- planning DTOs, a bound null runtime, and a wallet-backed Inventory read model exist, but no Treasury state or persistence exists;
+- the read model exposes explicit zero allocation measures and absent-fact markers; it does not yet read persisted Inventory, Allocation, Slice, Draw, Release, Repayment, or Reversal facts;
 - no first-class reserve/capture/release/repay/reverse API;
 - no idempotent reservation keys;
 - no reservation ledger/read model;
@@ -258,6 +261,38 @@ treasury_operation = inventory | allocation | slice | draw | release | repayment
 Caller metadata is otherwise preserved. The runtime markers override conflicting caller values so a null result cannot be presented as executed.
 
 The runtime uses no time, randomness, logs, database, Bavix service/model, or external commercial class. Identical input produces identical output. Tests prove resolution is singleton, all seven plans are stable, wallet balance is unchanged, and user/wallet/transaction/transfer row counts are unchanged.
+
+## Phase 4 Inventory Read Model Baseline
+
+Phase 4 adds two immutable package-owned DTOs:
+
+- `TreasuryWalletBalanceData`, a package-neutral balance snapshot carrying a wallet reference, currency, integer minor-unit accounting balance, and metadata;
+- `TreasuryInventoryReadModelData`, which exposes wallet balance, eligible inventory, allocated, drawn, released, outstanding, and usable amounts plus explicit Treasury-fact and reference fields.
+
+`TreasuryInventoryReadModelContract` accepts the package-neutral balance snapshot. Its bound implementation, `WalletBalanceInventoryReadModelService`, derives a read-only baseline:
+
+```text
+eligible inventory = max(0, wallet accounting balance)
+allocated = 0
+drawn = 0
+released = 0
+outstanding = 0
+usable = eligible inventory
+```
+
+The baseline sets `hasTreasuryFacts` to `false`, leaves Inventory and Allocation references null, and returns authoritative metadata:
+
+```text
+treasury_read_model = wallet-baseline
+treasury_read_model_status = read-only
+treasury_facts = absent
+```
+
+The explicit zero measures make the future Treasury vocabulary available without pretending that Treasury state exists. Consumers must interpret them together with `hasTreasuryFacts = false` and `treasury_facts = absent`.
+
+`BavixInventoryReadModelService` is the only Treasury class allowed to import Bavix. It is isolated under `Treasury/Adapters/Bavix`, reads the already-loaded wallet UUID, derived currency, and integer balance, and delegates all calculation to the package-neutral contract. It does not refresh, save, deposit, withdraw, transfer, or query transactions.
+
+The contract is bound as a singleton to its stateless package-neutral service. The Bavix adapter is resolved through constructor injection and holds no wallet state.
 
 ## Legacy Boundary Debt
 
@@ -345,6 +380,11 @@ All are planning-only today.
 - Null-runtime status and metadata markers are authoritative and override conflicting caller metadata.
 - Null-runtime observability is returned in the DTO only; Phase 3 emits no logs, events, or persisted evidence.
 - A null-runtime plan is not an allocation, draw, release, repayment, reversal, or settlement execution.
+- Phase 4 wallet balance is the accounting balance reported by the current Bavix wallet model.
+- Phase 4 eligible and usable inventory are non-negative and equal to the positive wallet balance because no Treasury allocations exist yet.
+- Phase 4 allocated, drawn, released, and outstanding measures are explicit zeros accompanied by absent-fact markers; they are not persisted Treasury facts.
+- Bavix dependencies in Treasury code are confined to explicit adapters under `Treasury/Adapters/Bavix`.
+- Inventory read-model resolution is read-only and may not refresh or mutate a Bavix wallet.
 
 ## Open Questions
 
@@ -365,7 +405,7 @@ All are planning-only today.
 
 ## Immediate Recommendation
 
-Phase 3 is green. The next planned architecture slice is **Phase 4 — Inventory Read Models**, subject to explicit approval. Phase 4 must remain read-only and keep wallet balance distinct from eligible, allocated, drawn, and usable measures.
+Phase 4 is green. The next Treasury slice should remain separately approved. A reasonable next step is **Phase 5 — Allocation and Slice Read-Model Planning**, still without persistence or money movement, so consumers can refine the liability vocabulary before write semantics are designed.
 
 Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
 
@@ -405,6 +445,8 @@ Phase 2 adds planning-only DTOs/contracts/tests for:
 
 Phase 3 adds only `NullTreasuryPlanningRuntime` and its singleton binding. It must remain deterministic, non-persistent, and incapable of money movement.
 
+Phase 4 adds only package-neutral balance/read-model DTOs, a read-only contract and pure baseline service, an isolated Bavix read adapter, and tests. It must not infer persisted Treasury history from its explicit zero measures.
+
 ## Required Test Posture
 
 Future slices should prove:
@@ -418,8 +460,8 @@ Future slices should prove:
 
 ## Current Compass Position
 
-Treasury grammar is the canonical target for wallet evolution. Phase 0 documentation, Phase 1 behavior characterization, Phase 2 planning types, and the Phase 3 null runtime now form the approved architecture baseline.
+Treasury grammar is the canonical target for wallet evolution. Phase 0 documentation, Phase 1 behavior characterization, Phase 2 planning types, the Phase 3 null runtime, and the Phase 4 Inventory read model now form the approved architecture baseline.
 
 x-change's current reservation/release terminology should be treated as bridge terminology until wallet-side Treasury contracts stabilize. Reservation remains an implementation detail of Allocation.
 
-The Phase 2 planning types and Phase 3 null runtime/binding are approved as a non-mutating seam. No stateful Treasury runtime, persistence, migration, balance change, money movement, event change, or `DisbursementFailed` refactor has been approved.
+The Phase 2 planning types, Phase 3 null runtime/binding, and Phase 4 wallet-backed read model are approved as non-mutating seams. No stateful Treasury runtime, persistence, migration, balance change, money movement, event change, or `DisbursementFailed` refactor has been approved.

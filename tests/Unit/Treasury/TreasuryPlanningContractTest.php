@@ -40,11 +40,10 @@ it('keeps the aggregate planning contract stable and package-owned', function ()
     }
 });
 
-it('does not import Bavix or external commercial domain classes', function () {
+it('confines Bavix to its adapter and does not import external commercial domain classes', function () {
     $directory = new RecursiveDirectoryIterator(__DIR__.'/../../../src/Treasury');
     $files = new RecursiveIteratorIterator($directory);
     $forbiddenImportFragments = [
-        'Bavix\\Wallet',
         'LBHurtado\\Voucher',
         'XChange',
         'Facility',
@@ -62,6 +61,10 @@ it('does not import Bavix or external commercial domain classes', function () {
         preg_match_all('/^use\s+([^;]+);/m', $source, $matches);
 
         foreach ($matches[1] as $import) {
+            if (str_contains($import, 'Bavix\\Wallet')) {
+                expect($file->getPathname())->toContain('/Adapters/Bavix/');
+            }
+
             foreach ($forbiddenImportFragments as $fragment) {
                 expect($import)->not->toContain($fragment);
             }
