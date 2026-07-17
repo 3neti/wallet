@@ -65,6 +65,7 @@ it('preserves the legacy disbursement failed event signature as boundary debt', 
             'voucher',
             'exception',
             'mobile',
+            'socket',
         ])
         ->and(array_map(fn (ReflectionParameter $parameter) => $parameter->getName(), $parameters))->toBe([
             'voucher',

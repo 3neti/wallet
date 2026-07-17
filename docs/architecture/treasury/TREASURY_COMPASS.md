@@ -4,7 +4,9 @@
 
 Phase 0 Treasury documentation bootstrap completed on 2026-07-17.
 
-Phase 1 current-behavior characterization tests were authored on 2026-07-17. PHP syntax and diff checks pass, but the Pest suite has not run because `vendor/bin/pest` is unavailable in this checkout. Phase 1 runtime verification therefore remains pending.
+Phase 1 current-behavior characterization was runtime-verified on 2026-07-17. Locked dependencies were restored without changing `composer.lock`; the focused Phase 1 suite passed with 22 tests / 118 assertions, and the full package suite passed with 27 tests / 126 assertions.
+
+The first focused run exposed one test-only characterization error: Laravel's `InteractsWithSockets` trait contributes a public `socket` property to `DisbursementFailed`. The expectation was corrected without changing production code. No existing production-behavior mismatch was found.
 
 This document captures the current architectural direction for evolving `3neti/wallet` into the Treasury layer of Settlement OS. It is intended as persisted migration memory for future Codex sessions working inside the wallet package.
 
@@ -211,9 +213,9 @@ The Phase 1 test suite now characterizes:
 - `TransactionData` PHP minor-unit mapping, confirmation flag, payload extraction, empty-payload default, and public field shape;
 - `BalanceUpdated` identity, balances, timestamp, channel, event name, and broadcast payload;
 - `DepositConfirmed` and `DisbursementConfirmed` transaction, signed amount, channel, event name, and broadcast payload;
-- the unchanged `DisbursementFailed` traits, public promoted properties, constructor types/default, and direct Voucher type dependency.
+- the unchanged `DisbursementFailed` traits, public properties (including trait-provided `socket`), constructor types/default, and direct Voucher type dependency.
 
-These tests are authored but not yet runtime-verified in this checkout because dependencies are unavailable.
+These tests are runtime-verified against the versions recorded in the existing lock file.
 
 ## Legacy Boundary Debt
 
@@ -230,7 +232,7 @@ Decouple Wallet DisbursementFailed Event From Voucher Model
 
 Potential future directions, not authorized now, include scalar/reference fields (`voucher_code`, `voucher_id`, `external_reference`) or a package-neutral `DisbursementFailureContextData` DTO with a characterized compatibility path.
 
-Phase 1 confirms that `DisbursementFailed` currently exposes public `voucher`, `exception`, and nullable `mobile` properties, directly type-hints `LBHurtado\Voucher\Models\Voucher`, uses Laravel dispatch/socket/serialization traits, and does not implement `ShouldBroadcast`. The direct Voucher class is also not declared in this package's Composer requirements, so class availability depends on the consuming application. Both facts remain legacy boundary debt; no event signature or dependency was changed.
+Phase 1 confirms that `DisbursementFailed` currently exposes constructor-promoted public `voucher`, `exception`, and nullable `mobile` properties plus the trait-provided public `socket` property. It directly type-hints `LBHurtado\Voucher\Models\Voucher`, uses Laravel dispatch/socket/serialization traits, and does not implement `ShouldBroadcast`. The direct Voucher class is also not declared in this package's Composer requirements, so class availability depends on the consuming application. Both facts remain legacy boundary debt; no event signature or dependency was changed.
 
 ## Relationship to Recent x-change Money Semantics Work
 
@@ -313,9 +315,9 @@ All are planning-only today.
 
 ## Immediate Recommendation
 
-Restore the package's local dependencies without updating the lock file, then run the focused Phase 1 tests followed by the complete Pest suite. Do not mark the Phase 1 exit criterion green until those tests pass.
+Phase 1 is green. The next planned architecture slice is **Phase 2 — Planning-only Treasury DTOs and Contracts**, subject to explicit approval. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
 
-After a green Phase 1 run, the next planned architecture slice is **Phase 2 — Planning-only Treasury DTOs and Contracts**, subject to explicit approval. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
+The existing `composer.lock` mismatch remains a package-maintenance risk. It was not corrected during verification because the slice explicitly required using the existing lock where possible and avoiding a lock update.
 
 ## Implementation Guardrails
 

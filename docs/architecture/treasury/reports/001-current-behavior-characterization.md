@@ -5,7 +5,7 @@
 - Date: 2026-07-17
 - Package: `3neti/wallet`
 - Scope: Phase 1 protection and characterization
-- Result: characterization tests authored; PHP syntax checks pass; Pest execution pending because package dependencies are unavailable
+- Result: **green**; locked dependencies restored, focused Phase 1 suite passed, and full package suite passed
 
 ## Files inspected
 
@@ -92,6 +92,7 @@ Created `tests/Unit/Events/DisbursementEventsTest.php` to protect:
 - public transaction property;
 - event names, private holder channel, UUID, and signed PHP amount payload;
 - `DisbursementFailed` trait set, direct public properties, constructor parameter order/types/nullability/default;
+- trait-provided public `socket` property on `DisbursementFailed`;
 - the legacy `LBHurtado\Voucher\Models\Voucher` constructor dependency;
 - current absence of `ShouldBroadcast` on `DisbursementFailed`.
 
@@ -128,7 +129,7 @@ Top-up resolves the system user and delegates to Bavix `transferFloat`. The syst
 
 `BalanceUpdated` exposes wallet identity/current balance/update time and broadcasts a four-field payload on a private holder channel. `DepositConfirmed` and `DisbursementConfirmed` expose their Bavix transaction and broadcast UUID plus the transaction's signed PHP amount on the same channel pattern.
 
-`DisbursementFailed` is a dispatchable/serializable non-broadcast event with public `voucher`, `exception`, and nullable `mobile` constructor-promoted properties. The Voucher property remains directly typed to the x-change-owned Voucher model.
+`DisbursementFailed` is a dispatchable/serializable non-broadcast event with public `voucher`, `exception`, and nullable `mobile` constructor-promoted properties. Laravel's `InteractsWithSockets` trait also contributes a public `socket` property. The Voucher property remains directly typed to the x-change-owned Voucher model.
 
 ## Legacy boundary debt confirmed
 
@@ -142,15 +143,35 @@ This is not target ownership. Removal or replacement still requires **Treasury B
 - The direct Voucher type is not represented in `composer.json`, creating an implicit consumer-provided class dependency.
 - No existing runtime behavior contradicted the Phase 0 wallet descriptions.
 
+## Verification Slice 1 runtime results
+
+Dependencies were restored with `composer install --no-interaction --prefer-dist` using the existing lock file. Composer installed 150 locked packages, including development dependencies. `composer.lock` was not changed.
+
+The sandboxed install attempt first failed with DNS/network errors. The same lock-preserving command succeeded after approved network access. This was classified as **1 — dependency/environment setup**, resolved without a source or lock-file change.
+
+The first focused run produced 21 passes and one failure (109 assertions). The failure was isolated to the `DisbursementFailed` reflection expectation: the test expected only its three constructor-promoted properties, while runtime reflection correctly also returned the public `socket` property contributed by `InteractsWithSockets`.
+
+That failure was classified as **2 — incorrect characterization**. The test expectation and documentation were corrected. It was not an existing production behavior mismatch and did not require changing the event.
+
+After correction:
+
+- focused Phase 1 suite: **22 passed, 118 assertions**;
+- full package Pest suite: **27 passed, 126 assertions**;
+- category 3 — existing production behavior mismatch: **none**;
+- category 4 — legacy boundary debt: direct Voucher type remains confirmed and unchanged.
+
 ## Commands executed
 
 - required architecture/source/test inspection with `sed -n`
 - repository and file discovery with `find`, `rg`, and `git status --short`
 - Composer script/runtime discovery from `composer.json` and `vendor/bin/pest`
+- `composer install --no-interaction --prefer-dist` from the existing lock (sandboxed attempt, then approved network retry)
 - dependency API reference searches with `rg -n` against already installed sibling-package vendor sources
 - PHP runtime/version inspection with `php -v`
 - syntax validation for all test PHP files with `php -l`
 - `composer validate --strict`
+- focused Phase 1 Pest command covering new and strengthened tests
+- `vendor/bin/pest` for the complete package suite
 - whitespace validation with `git diff --check`
 - changed-file review with `git diff --name-only` and `git status --short`
 - targeted Phase 1 staging with `git add`
@@ -161,18 +182,17 @@ This is not target ownership. Removal or replacement still requires **Treasury B
 - PHP syntax checks: **passed** for all test files.
 - `git diff --check`: **passed**.
 - Staged diff whitespace/scope review: **passed**; only the nine Phase 1 test/documentation files are staged.
+- Dependency restoration: **passed** using all 150 packages from the existing lock; no lock-file change.
+- Initial focused Pest run: **1 failed, 21 passed (109 assertions)** due to an incorrect test expectation for the trait-provided public `socket` property.
+- Corrected focused Pest run: **22 passed (118 assertions)**.
+- Full Pest suite: **27 passed (126 assertions)**.
 - `composer validate --strict`: **failed strict validation** because `composer.lock` is not up to date with `composer.json`; `composer.json` itself is valid. The lock file was not changed.
-- Focused Pest tests: **not run** because `vendor/bin/pest` is unavailable.
-- Full Pest suite: **not run** for the same reason.
-- Dependency installation: **not attempted**, per Phase 1 instructions.
 - Production source changes: none.
 - Migration changes: none.
 - Public API/event signature changes: none.
 
 ## Remaining risks
 
-- The new characterizations are not runtime-verified until the locked test dependencies are restored and Pest runs.
-- Exact compatibility with installed Bavix/Laravel versions must be confirmed by that run; sibling vendor source was used only as a read-only signature reference.
 - The out-of-date lock file makes the intended reproducible dependency set ambiguous and remains unresolved by instruction.
 - `DisbursementFailed` still exposes the cross-package Voucher model and relies on an undeclared class dependency.
 - Event listeners, queued serialization round trips, and broadcast transport integration are not characterized beyond the event methods/public signatures requested here.
@@ -180,6 +200,4 @@ This is not target ownership. Removal or replacement still requires **Treasury B
 
 ## Recommended next slice
 
-First restore dependencies without updating `composer.lock`, then run focused Phase 1 tests and the full package suite. Phase 1 should be marked green only after both pass.
-
-After that verification, the recommended architecture slice is **Phase 2 — Planning-only Treasury DTOs and Contracts**, subject to explicit approval. Keep the Voucher boundary-debt slice separate because it may alter public event compatibility.
+Phase 1 is green. The recommended architecture slice is **Phase 2 — Planning-only Treasury DTOs and Contracts**, subject to explicit approval. Keep the Voucher boundary-debt slice separate because it may alter public event compatibility.
