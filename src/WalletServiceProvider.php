@@ -4,6 +4,8 @@ namespace LBHurtado\Wallet;
 
 use Illuminate\Support\ServiceProvider;
 use LBHurtado\Wallet\Providers\EventServiceProvider;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryPlanningContract;
+use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryPlanningRuntime;
 
 class WalletServiceProvider extends ServiceProvider
 {
@@ -20,6 +22,11 @@ class WalletServiceProvider extends ServiceProvider
 
         // Register event service provider
         $this->app->register(EventServiceProvider::class);
+
+        $this->app->singleton(
+            TreasuryPlanningContract::class,
+            NullTreasuryPlanningRuntime::class
+        );
     }
 
     public function boot(): void

@@ -13,8 +13,8 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasurySliceData;
 
 /**
- * Planning boundary only. Implementations are not authorized to move money
- * or persist Treasury state during Phase 2.
+ * Planning boundary only. Implementations must not imply that a plan moved
+ * money or persisted Treasury state.
  */
 interface TreasuryPlanningContract
 {

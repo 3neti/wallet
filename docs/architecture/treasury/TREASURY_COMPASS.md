@@ -10,9 +10,11 @@ The first focused run exposed one test-only characterization error: Laravel's `I
 
 Phase 2 planning-only Treasury DTOs and contracts were completed and runtime-verified on 2026-07-17. The focused Phase 2 suite passed with 5 tests / 142 assertions, and the full package suite passed with 32 tests / 268 assertions.
 
+Phase 3 Null Treasury Runtime was completed and runtime-verified on 2026-07-17. The focused Treasury suite passed with 8 tests / 244 assertions, and the full package suite passed with 35 tests / 370 assertions.
+
 This document captures the current architectural direction for evolving `3neti/wallet` into the Treasury layer of Settlement OS. It is intended as persisted migration memory for future Codex sessions working inside the wallet package.
 
-No Treasury runtime implementation has been approved by this compass entry.
+No stateful, persistent, or money-moving Treasury runtime has been approved by this compass entry. The approved Phase 3 implementation is null/planning-only.
 
 ## Context Source
 
@@ -193,10 +195,9 @@ Observed current capabilities:
 
 Bavix owns the wallet, transaction, and transfer schema/migrations and the current money-movement primitives. `3neti/wallet` owns the integration configuration and standardizing behavior around those primitives. Configuring Bavix model and table names does not transfer schema ownership to this package.
 
-Observed current gaps after Phase 2:
+Observed current gaps after Phase 3:
 
-- planning DTOs exist for Inventory, Allocation, Slice, Draw, Release, Repayment, and Reversal, but no runtime state or persistence exists;
-- the aggregate planning contract has no production implementation or container binding;
+- planning DTOs and a bound null runtime exist for Inventory, Allocation, Slice, Draw, Release, Repayment, and Reversal, but no Treasury state or persistence exists;
 - no first-class reserve/capture/release/repay/reverse API;
 - no idempotent reservation keys;
 - no reservation ledger/read model;
@@ -235,6 +236,28 @@ The DTOs use scalar references, integer minor units, explicit currency, descript
 `TreasuryPlanningContract` provides `planInventory`, `planAllocation`, `planSlice`, `planDraw`, `planRelease`, `planRepayment`, and `planReversal`. It accepts and returns only package-owned DTOs.
 
 There is no production implementation, service-provider binding, persistence, Bavix dependency, money movement, or balance mutation. A test-local pass-through implementation proves that exercising every planning method leaves wallet balance, Bavix transaction count, and transfer count unchanged.
+
+## Phase 3 Null Runtime Baseline
+
+`NullTreasuryPlanningRuntime` is the production-safe implementation of `TreasuryPlanningContract`. `WalletServiceProvider` binds the contract to this stateless runtime as a singleton for package-local and consumer resolution.
+
+Every planning method returns a fresh DTO with all caller references, amounts, currency, and idempotency keys preserved. The runtime replaces status with:
+
+```text
+null-runtime-planned
+```
+
+It also merges authoritative metadata:
+
+```text
+treasury_runtime = null
+treasury_runtime_status = planned
+treasury_operation = inventory | allocation | slice | draw | release | repayment | reversal
+```
+
+Caller metadata is otherwise preserved. The runtime markers override conflicting caller values so a null result cannot be presented as executed.
+
+The runtime uses no time, randomness, logs, database, Bavix service/model, or external commercial class. Identical input produces identical output. Tests prove resolution is singleton, all seven plans are stable, wallet balance is unchanged, and user/wallet/transaction/transfer row counts are unchanged.
 
 ## Legacy Boundary Debt
 
@@ -318,6 +341,10 @@ All are planning-only today.
 - Treasury amounts are represented as integer minor units with an explicit currency string.
 - External references remain opaque strings; no x-change, Voucher, Facility, or Lien classes may cross the contract.
 - Phase 2 status and idempotency fields carry planning intent but are not validated, stored, or enforced.
+- `TreasuryPlanningContract` resolves to `NullTreasuryPlanningRuntime` by default.
+- Null-runtime status and metadata markers are authoritative and override conflicting caller metadata.
+- Null-runtime observability is returned in the DTO only; Phase 3 emits no logs, events, or persisted evidence.
+- A null-runtime plan is not an allocation, draw, release, repayment, reversal, or settlement execution.
 
 ## Open Questions
 
@@ -338,7 +365,7 @@ All are planning-only today.
 
 ## Immediate Recommendation
 
-Phase 2 is green. The next planned architecture slice is **Phase 3 — Null Treasury Runtime**, subject to explicit approval. Phase 3 must remain non-mutating, observable, and incapable of moving money or writing Treasury state.
+Phase 3 is green. The next planned architecture slice is **Phase 4 — Inventory Read Models**, subject to explicit approval. Phase 4 must remain read-only and keep wallet balance distinct from eligible, allocated, drawn, and usable measures.
 
 Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
 
@@ -376,7 +403,7 @@ Phase 2 adds planning-only DTOs/contracts/tests for:
 - repay;
 - reverse.
 
-No production implementation was added in Phase 2. A null runtime remains a separately approved Phase 3 concern.
+Phase 3 adds only `NullTreasuryPlanningRuntime` and its singleton binding. It must remain deterministic, non-persistent, and incapable of money movement.
 
 ## Required Test Posture
 
@@ -391,8 +418,8 @@ Future slices should prove:
 
 ## Current Compass Position
 
-Treasury grammar is the canonical target for wallet evolution. Phase 0 documentation, Phase 1 behavior characterization, and Phase 2 planning types now form the approved architecture baseline.
+Treasury grammar is the canonical target for wallet evolution. Phase 0 documentation, Phase 1 behavior characterization, Phase 2 planning types, and the Phase 3 null runtime now form the approved architecture baseline.
 
 x-change's current reservation/release terminology should be treated as bridge terminology until wallet-side Treasury contracts stabilize. Reservation remains an implementation detail of Allocation.
 
-The Phase 2 planning contract and DTOs are approved as non-mutating descriptive types. No Treasury runtime implementation, service binding, persistence, migration, balance change, event change, or production-code refactor has been approved.
+The Phase 2 planning types and Phase 3 null runtime/binding are approved as a non-mutating seam. No stateful Treasury runtime, persistence, migration, balance change, money movement, event change, or `DisbursementFailed` refactor has been approved.
