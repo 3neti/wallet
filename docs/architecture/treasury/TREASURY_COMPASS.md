@@ -4,9 +4,11 @@
 
 Phase 0 Treasury documentation bootstrap completed on 2026-07-17.
 
+Phase 1 current-behavior characterization tests were authored on 2026-07-17. PHP syntax and diff checks pass, but the Pest suite has not run because `vendor/bin/pest` is unavailable in this checkout. Phase 1 runtime verification therefore remains pending.
+
 This document captures the current architectural direction for evolving `3neti/wallet` into the Treasury layer of Settlement OS. It is intended as persisted migration memory for future Codex sessions working inside the wallet package.
 
-No implementation has been approved by this compass entry.
+No Treasury runtime implementation has been approved by this compass entry.
 
 ## Context Source
 
@@ -200,7 +202,18 @@ Observed current gaps:
 
 The existing `ESCROW` wallet type is a useful signal but is not a complete allocation ledger.
 
-The test suite characterizes wallet provisioning, system-user resolution, top-up transfer effects, and transaction DTO construction. It does not currently characterize `WithdrawCash` or all event compatibility surfaces.
+The Phase 1 test suite now characterizes:
+
+- configured system-user resolution plus invalid-model, non-wallet-model, and missing-user failures;
+- stable platform/rewards/escrow/commission slugs, labels, metadata, zero balances, and idempotent provisioning;
+- top-up resolver/transfer interaction, sender/recipient balance changes, and paired Bavix withdraw/deposit records;
+- full and explicit-minor-unit cash withdrawal, error paths, metadata, and metadata override precedence;
+- `TransactionData` PHP minor-unit mapping, confirmation flag, payload extraction, empty-payload default, and public field shape;
+- `BalanceUpdated` identity, balances, timestamp, channel, event name, and broadcast payload;
+- `DepositConfirmed` and `DisbursementConfirmed` transaction, signed amount, channel, event name, and broadcast payload;
+- the unchanged `DisbursementFailed` traits, public promoted properties, constructor types/default, and direct Voucher type dependency.
+
+These tests are authored but not yet runtime-verified in this checkout because dependencies are unavailable.
 
 ## Legacy Boundary Debt
 
@@ -216,6 +229,8 @@ Decouple Wallet DisbursementFailed Event From Voucher Model
 ```
 
 Potential future directions, not authorized now, include scalar/reference fields (`voucher_code`, `voucher_id`, `external_reference`) or a package-neutral `DisbursementFailureContextData` DTO with a characterized compatibility path.
+
+Phase 1 confirms that `DisbursementFailed` currently exposes public `voucher`, `exception`, and nullable `mobile` properties, directly type-hints `LBHurtado\Voucher\Models\Voucher`, uses Laravel dispatch/socket/serialization traits, and does not implement `ShouldBroadcast`. The direct Voucher class is also not declared in this package's Composer requirements, so class availability depends on the consuming application. Both facts remain legacy boundary debt; no event signature or dependency was changed.
 
 ## Relationship to Recent x-change Money Semantics Work
 
@@ -276,7 +291,8 @@ All are planning-only today.
 - Settlement Envelope remains intrinsic to execution.
 - Execution Engine remains orchestration.
 - The existing direct Voucher dependency is legacy boundary debt, not target ownership.
-- Removing that dependency is outside this documentation-only bootstrap.
+- Removing that dependency is outside the approved Phase 0/Phase 1 characterization scope.
+- Phase 1 characterization must not introduce Inventory, Allocation, Slice, reservation, or other Treasury runtime semantics into existing wallet tests.
 
 ## Open Questions
 
@@ -297,9 +313,9 @@ All are planning-only today.
 
 ## Immediate Recommendation
 
-The canonical documentation bootstrap is complete. The next wallet-side slice should be **Phase 1 — Current Behavior Characterization**, with emphasis on withdrawal behavior, event compatibility, and unchanged top-up/transfer behavior.
+Restore the package's local dependencies without updating the lock file, then run the focused Phase 1 tests followed by the complete Pest suite. Do not mark the Phase 1 exit criterion green until those tests pass.
 
-Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
+After a green Phase 1 run, the next planned architecture slice is **Phase 2 — Planning-only Treasury DTOs and Contracts**, subject to explicit approval. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately approved and scoped because it may affect public events or listeners.
 
 ## Implementation Guardrails
 
@@ -352,4 +368,4 @@ Treasury grammar is the canonical target for wallet evolution, and the documents
 
 x-change's current reservation/release terminology should be treated as bridge terminology until wallet-side Treasury contracts stabilize. Reservation remains an implementation detail of Allocation.
 
-No Treasury runtime, contract, migration, balance change, or production-code refactor has been approved.
+No Treasury runtime, contract, migration, balance change, event change, or production-code refactor has been approved. Phase 1 adds protection through tests and documentation only.

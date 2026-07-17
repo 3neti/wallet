@@ -1,6 +1,7 @@
 <?php
 
 use Bavix\Wallet\Interfaces\Wallet;
+use Bavix\Wallet\Models\Transaction;
 use Bavix\Wallet\Models\Transfer;
 use Illuminate\Support\Facades\Config;
 use LBHurtado\Wallet\Actions\TopupWalletAction;
@@ -58,22 +59,27 @@ it('updates balances for system and user after top-up', function () {
     expect((float) $systemUser->balanceFloat)->toBe(10000.00);
     expect((float) $recipientUser->balanceFloat)->toBe(0.00);
 
-    // Call the action
+    expect($recipientUser)->toBeInstanceOf(User::class);
 
-    if ($recipientUser instanceof User) {
-        $transfer = TopupWalletAction::run($recipientUser, 1000.0); // Transfer 5,000 to recipient
+    $transfer = TopupWalletAction::run($recipientUser, 1000.0);
 
-        // Verify balances after the transfer
-        $systemUser->wallet->refreshBalance();
-        expect((float) $systemUser->balanceFloat)->toBe(9000.00);
-        $recipientUser->wallet->refreshBalance();
-        expect((float) $recipientUser->balanceFloat)->toBe(1000.00);
+    // Verify balances after the transfer
+    $systemUser->wallet->refreshBalance();
+    expect((float) $systemUser->balanceFloat)->toBe(9000.00);
+    $recipientUser->wallet->refreshBalance();
+    expect((float) $recipientUser->balanceFloat)->toBe(1000.00);
 
-        // Verify the transfer details
-        expect($transfer)->toBeInstanceOf(Transfer::class);
-        expect($transfer->from->holder->is($systemUser))->toBeTrue();
-        expect($transfer->to->holder->is($recipientUser))->toBeTrue();
-        expect((float) $transfer->withdraw->amountFloat)->toBe(-1000.00);
-        expect((float) $transfer->deposit->amountFloat)->toBe(1000.00);
-    }
+    // Verify the Bavix transfer and its paired transaction records
+    expect($transfer)->toBeInstanceOf(Transfer::class)
+        ->and($transfer->status)->toBe(Transfer::STATUS_TRANSFER)
+        ->and($transfer->withdraw)->toBeInstanceOf(Transaction::class)
+        ->and($transfer->withdraw->type)->toBe(Transaction::TYPE_WITHDRAW)
+        ->and($transfer->withdraw->confirmed)->toBeTrue()
+        ->and($transfer->deposit)->toBeInstanceOf(Transaction::class)
+        ->and($transfer->deposit->type)->toBe(Transaction::TYPE_DEPOSIT)
+        ->and($transfer->deposit->confirmed)->toBeTrue()
+        ->and($transfer->from->holder->is($systemUser))->toBeTrue()
+        ->and($transfer->to->holder->is($recipientUser))->toBeTrue()
+        ->and((float) $transfer->withdraw->amountFloat)->toBe(-1000.00)
+        ->and((float) $transfer->deposit->amountFloat)->toBe(1000.00);
 });
