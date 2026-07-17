@@ -1,0 +1,91 @@
+# Treasury Grammar
+
+## Status
+
+Canonical planning grammar. These definitions establish domain language only; no public contracts or runtime behavior are approved yet.
+
+## Settlement Resource
+
+A **Settlement Resource** is a controlled source of settlement capacity that Treasury can identify, measure, and account for under an eligibility policy.
+
+Examples include cash, underwriter-backed liquidity, eligible receivables, guarantees, and future resource types. The commercial instrument that grants or governs a resource is not itself owned by Treasury.
+
+## Inventory
+
+**Inventory** is Treasury's accounting representation of a Settlement Resource position that may support settlement.
+
+Inventory answers questions such as:
+
+- which resource is represented;
+- what amount or capacity is recognized;
+- what portion is eligible and deployable;
+- what portion has been allocated or drawn;
+- which package-neutral external reference links it to its origin.
+
+Inventory does not encode a Facility, Lien, Voucher, Pay Code, Settlement Envelope, or provider workflow.
+
+## Allocation
+
+An **Allocation** is a Treasury commitment of a bounded portion of Inventory to an external commercial or settlement context, identified only through package-neutral references.
+
+An Allocation has a lifecycle, an original amount or capacity, a remaining amount, and idempotent operation references. Its implementation may reserve wallet funds or record a ledger commitment, but **reservation is an implementation detail of Allocation**, not the top-level domain abstraction.
+
+## Slice
+
+A **Slice** is an independently actionable subdivision of an Allocation.
+
+Slices allow one Allocation to support fixed portions, partial claims, staged settlement, or repeated utilization. A Slice can be drawn, released, repaid, or reversed according to Treasury invariants and a request from the owning orchestration layer.
+
+## Draw / Capture
+
+**Draw** and **Capture** are equivalent Treasury verbs for consuming available capacity from an Allocation or Slice for settlement.
+
+A draw reduces the remaining committed capacity and increases utilization/drawn accounting. It does not by itself define provider success, claim UX, or the commercial lifecycle that requested it.
+
+## Release
+
+**Release** returns undrawn committed capacity to deployable Inventory. Typical external reasons include expiry or cancellation, but Treasury receives an operation request and neutral reason/reference rather than owning those lifecycles.
+
+A release never releases an amount that has already been drawn unless a separately defined compensating operation first changes that state.
+
+## Repay
+
+**Repay** records value returned against drawn or outstanding utilization. Depending on the resource policy, repayment may restore reusable Allocation capacity, replenish Inventory, reduce outstanding liability, or some combination represented explicitly in the ledger.
+
+Repayment is not the same as release: release concerns undrawn commitment; repayment concerns utilization that has already occurred.
+
+## Reverse
+
+**Reverse** is a compensating accounting operation against a prior Treasury operation. It preserves the audit trail rather than deleting or rewriting the original operation.
+
+A reversal must reference the operation it compensates and be idempotent. Whether failed provider disbursement results in reversal, retry, suspense, or manual reconciliation is a policy decision outside the basic Treasury grammar.
+
+## Reservation
+
+**Reservation** is a technical mechanism that may prevent allocated wallet-backed value from being spent elsewhere. It may be implemented through a ledger, holds, Bavix-compatible primitives, or dedicated storage after an explicit decision.
+
+Callers request an Allocation. They do not make reservation storage the cross-package domain contract.
+
+## Reference flow
+
+```text
+Settlement Resource
+  -> represented as Inventory
+  -> committed through Allocation
+  -> optionally divided into Slices
+  -> consumed by Draw/Capture
+  -> unused capacity returned by Release
+  -> utilization reduced/restored by Repay
+  -> prior operations compensated by Reverse
+```
+
+## Required invariants for future design
+
+- amounts use an explicit currency/unit and integer-safe representation;
+- total active commitment cannot exceed eligible inventory under the selected policy;
+- a draw cannot exceed the active remainder of its Allocation or Slice;
+- a release cannot exceed the undrawn active remainder;
+- a repayment cannot exceed the repayable utilization unless policy explicitly permits credit balances;
+- a reversal references a prior operation and cannot silently erase history;
+- every mutating request is idempotent under a caller-supplied operation key;
+- cross-package references are opaque to Treasury and never import x-change domain classes.
