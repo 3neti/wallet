@@ -56,6 +56,16 @@ If an EMI makes funds available before a later bank sweep, Treasury may first re
 
 Gross amount, provider fee, net settled amount, and Account credit remain distinct. The default secure policy credits no more than verified net eligible capacity.
 
+### Durable Inventory operation ledger
+
+Committed Inventory operations are append-only accounting truth. Each operation records a positive magnitude and optional source/destination Inventory: destination amounts increase the position and source amounts decrease it. Adjustment DTOs expose a signed delta, while persistence keeps magnitude and direction separate.
+
+```text
+Inventory Balance = Sum(Committed Destination Amounts) - Sum(Committed Source Amounts)
+```
+
+The stored Inventory balance and version are transactionally maintained, rebuildable projections. Negative Inventory is permitted for an authoritative impairment or reversal and must be treated as a deficit by usable/deployable policy. Ordinary reclassification cannot overdraw its source.
+
 ### Pay Code issued -> Allocate / reserve Inventory
 
 x-change requests an Allocation with an idempotency key and opaque references. Treasury validates eligible Inventory and commits capacity. For wallet-backed Inventory, an eventual implementation may reserve value so current wallet funds cannot be reused.

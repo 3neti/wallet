@@ -5,11 +5,15 @@ namespace LBHurtado\Wallet;
 use Illuminate\Support\ServiceProvider;
 use LBHurtado\Wallet\Providers\EventServiceProvider;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationPlanningContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPlanningContract;
 use LBHurtado\Wallet\Treasury\ReadModels\AbsentTreasuryAllocationReadModelService;
+use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryInventoryPositionReadModel;
 use LBHurtado\Wallet\Treasury\ReadModels\WalletBalanceInventoryReadModelService;
+use LBHurtado\Wallet\Treasury\Runtime\DatabaseTreasuryInventoryOperationRuntime;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryInventoryOperationPlanningRuntime;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryPlanningRuntime;
 
@@ -40,6 +44,16 @@ class WalletServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(
+            TreasuryInventoryOperationContract::class,
+            DatabaseTreasuryInventoryOperationRuntime::class
+        );
+
+        $this->app->singleton(
+            TreasuryInventoryPositionReadModelContract::class,
+            DatabaseTreasuryInventoryPositionReadModel::class
+        );
+
+        $this->app->singleton(
             TreasuryInventoryReadModelContract::class,
             WalletBalanceInventoryReadModelService::class
         );
@@ -52,6 +66,8 @@ class WalletServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
         // Allow publishing the configuration files
         $this->publishes([
             __DIR__.'/../config/account.php' => config_path('account.php'),

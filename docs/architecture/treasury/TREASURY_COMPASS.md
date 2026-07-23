@@ -242,6 +242,8 @@ The DTOs use scalar references, integer minor units, explicit currency, descript
 
 The additive `TreasuryInventoryOperationPlanningContract` covers inbound-side planning without expanding that published aggregate contract. Its package-owned DTOs represent Inventory recognition, amount-conserving reclassification, signed adjustment, and operation-targeted reversal. The bound null runtime remains deterministic, non-persistent, and incapable of changing Inventory or Account balances.
 
+The durable `TreasuryInventoryOperationContract` is a separate write boundary. Its database runtime registers zero-balance Inventory explicitly and appends recognition, reclassification, negative adjustment, and reversal operations under unique operation/idempotency references. Operation rows are immutable; Inventory balance and version are locked, transactionally maintained, and rebuildable from destination-minus-source operation magnitudes. It does not call Bavix or book an Account balance.
+
 There is no production implementation, service-provider binding, persistence, Bavix dependency, money movement, or balance mutation. A test-local pass-through implementation proves that exercising every planning method leaves wallet balance, Bavix transaction count, and transfer count unchanged.
 
 ## Phase 3 Null Runtime Baseline
@@ -421,6 +423,9 @@ All are planning-only today.
 - provider notifications and balances are external observations, not Treasury recognition;
 - reclassification moves recognized capacity between Inventory positions without changing an Account balance;
 - Inventory adjustment is a signed correction or impairment and cannot substitute for funding evidence;
+- durable positive adjustments are rejected; new capacity requires verified recognition and restoration requires reversal of the prior impairment;
+- authoritative impairment or reversal may create negative Inventory, which downstream usable-balance policy must expose as a deficit;
+- committed Inventory operation rows are immutable; Inventory balance and version are rebuildable projections rather than a second accounting truth;
 - Null-runtime status and metadata markers are authoritative and override conflicting caller metadata.
 - Null-runtime observability is returned in the DTO only; Phase 3 emits no logs, events, or persisted evidence.
 - A null-runtime plan is not an allocation, draw, release, repayment, reversal, or settlement execution.

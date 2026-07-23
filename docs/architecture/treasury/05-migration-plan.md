@@ -82,6 +82,8 @@ Required decision record:
 
 Exit criterion: an approved ADR precedes any durable implementation.
 
+Inventory-side decision: use an append-only Inventory operation ledger plus transactionally maintained balance/version projections. Recognition, reclassification, negative adjustment, and operation-targeted reversal are package-owned operations. This decision does not yet approve durable Allocation/reservation storage or Account balance mutation.
+
 ## Phase 7 — Durable Reservation/Allocation Storage
 
 Implement the approved storage and ledger model with migrations only after separate authorization.
@@ -121,4 +123,4 @@ Stop and obtain explicit direction if a phase would:
 
 ## Recommended next slice
 
-Complete the additive Inventory-operation planning seam for recognition, reclassification, adjustment, and operation-targeted reversal. Then make the Phase 6 ledger decision before adding persistence or money movement. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately scoped because it changes a production event contract and may require consumer coordination.
+Integrate the durable Inventory operation boundary with x-change through opaque funding references, then design the separately atomic Account-booking boundary. Durable Allocation/reservation storage remains a later Phase 7 decision. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately scoped because it changes a production event contract and may require consumer coordination.
