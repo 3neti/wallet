@@ -2,7 +2,7 @@
 
 ## Status
 
-Canonical planning grammar. These definitions establish domain language only; no public contracts or runtime behavior are approved yet.
+Canonical Treasury grammar. Planning-only contracts may expose this language, but durable accounting and money movement require separately approved runtime slices.
 
 ## Settlement Resource
 
@@ -23,6 +23,18 @@ Inventory answers questions such as:
 - which package-neutral external reference links it to its origin.
 
 Inventory does not encode a Facility, Lien, Voucher, Pay Code, Settlement Envelope, or provider workflow.
+
+## Recognize Inventory
+
+**Recognize Inventory** records eligible capacity entering one Inventory from a verified Settlement Resource. Recognition requires an external evidence reference and an idempotency key; a provider notification by itself is not recognition.
+
+## Reclassify Inventory
+
+**Reclassify Inventory** moves already-recognized capacity between two Inventory positions without changing the linked Account balance. A typical example is settlement of an EMI receivable into bank cash. The source decrease and destination increase must conserve currency and amount.
+
+## Adjust Inventory
+
+**Adjust Inventory** records an explicit signed correction or impairment to one Inventory. It is a controlled accounting operation, not a substitute for provider evidence or a user-facing funding command.
 
 ## Allocation
 
@@ -60,6 +72,8 @@ Repayment is not the same as release: release concerns undrawn commitment; repay
 
 A reversal must reference the operation it compensates and be idempotent. Whether failed provider disbursement results in reversal, retry, suspense, or manual reconciliation is a policy decision outside the basic Treasury grammar.
 
+A reversal derives its affected Inventory or Allocation from the referenced operation. It does not require an Allocation when compensating Inventory recognition, reclassification, or adjustment.
+
 ## Reservation
 
 **Reservation** is a technical mechanism that may prevent allocated wallet-backed value from being spent elsewhere. It may be implemented through a ledger, holds, Bavix-compatible primitives, or dedicated storage after an explicit decision.
@@ -71,6 +85,9 @@ Callers request an Allocation. They do not make reservation storage the cross-pa
 ```text
 Settlement Resource
   -> represented as Inventory
+  -> increased by Recognize Inventory
+  -> moved without duplication by Reclassify Inventory
+  -> corrected or impaired by Adjust Inventory
   -> committed through Allocation
   -> optionally divided into Slices
   -> consumed by Draw/Capture
@@ -87,5 +104,8 @@ Settlement Resource
 - a release cannot exceed the undrawn active remainder;
 - a repayment cannot exceed the repayable utilization unless policy explicitly permits credit balances;
 - a reversal references a prior operation and cannot silently erase history;
+- recognition requires verified Settlement Resource evidence and cannot be inferred from an unverified webhook;
+- reclassification conserves amount and currency and does not change the linked Account balance;
+- an adjustment uses an explicit signed delta and cannot silently replace recognition;
 - every mutating request is idempotent under a caller-supplied operation key;
 - cross-package references are opaque to Treasury and never import x-change domain classes.

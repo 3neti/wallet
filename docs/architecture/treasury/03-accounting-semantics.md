@@ -48,6 +48,14 @@ These are conceptual formulas. Restored capacity must remain capped by the appro
 
 Treasury does not own the listed Pay Code events. They are x-change lifecycle events that may request package-neutral Treasury operations.
 
+### Provider-confirmed Account funding -> Recognize Inventory
+
+Inbound funding is not an Allocation, Draw, Release, or Repayment. The owning orchestration layer verifies provider evidence, then requests Inventory recognition and an Account booking through an approved atomic posting boundary. Provider or bank balances remain external reconciliation observations.
+
+If an EMI makes funds available before a later bank sweep, Treasury may first recognize an eligible EMI receivable or wallet-float Resource. Settlement into bank cash is a reclassification and must not credit the Account again.
+
+Gross amount, provider fee, net settled amount, and Account credit remain distinct. The default secure policy credits no more than verified net eligible capacity.
+
 ### Pay Code issued -> Allocate / reserve Inventory
 
 x-change requests an Allocation with an idempotency key and opaque references. Treasury validates eligible Inventory and commits capacity. For wallet-backed Inventory, an eventual implementation may reserve value so current wallet funds cannot be reused.

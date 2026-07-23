@@ -240,6 +240,8 @@ The DTOs use scalar references, integer minor units, explicit currency, descript
 
 `TreasuryPlanningContract` provides `planInventory`, `planAllocation`, `planSlice`, `planDraw`, `planRelease`, `planRepayment`, and `planReversal`. It accepts and returns only package-owned DTOs.
 
+The additive `TreasuryInventoryOperationPlanningContract` covers inbound-side planning without expanding that published aggregate contract. Its package-owned DTOs represent Inventory recognition, amount-conserving reclassification, signed adjustment, and operation-targeted reversal. The bound null runtime remains deterministic, non-persistent, and incapable of changing Inventory or Account balances.
+
 There is no production implementation, service-provider binding, persistence, Bavix dependency, money movement, or balance mutation. A test-local pass-through implementation proves that exercising every planning method leaves wallet balance, Bavix transaction count, and transfer count unchanged.
 
 ## Phase 3 Null Runtime Baseline
@@ -414,6 +416,11 @@ All are planning-only today.
 - External references remain opaque strings; no x-change, Voucher, Facility, or Lien classes may cross the contract.
 - Phase 2 status and idempotency fields carry planning intent but are not validated, stored, or enforced.
 - `TreasuryPlanningContract` resolves to `NullTreasuryPlanningRuntime` by default.
+- `TreasuryInventoryOperationPlanningContract` resolves to its dedicated null runtime by default.
+- inbound funding is represented by verified Inventory recognition and a separately approved Account booking, never by Allocation, Draw, Release, or Repayment;
+- provider notifications and balances are external observations, not Treasury recognition;
+- reclassification moves recognized capacity between Inventory positions without changing an Account balance;
+- Inventory adjustment is a signed correction or impairment and cannot substitute for funding evidence;
 - Null-runtime status and metadata markers are authoritative and override conflicting caller metadata.
 - Null-runtime observability is returned in the DTO only; Phase 3 emits no logs, events, or persisted evidence.
 - A null-runtime plan is not an allocation, draw, release, repayment, reversal, or settlement execution.

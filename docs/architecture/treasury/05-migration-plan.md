@@ -2,7 +2,7 @@
 
 ## Status and authorization boundary
 
-Only Phase 0 is authorized by this bootstrap. Every later phase requires explicit approval. No phase may silently change current top-up, transfer, withdrawal, balance, event, or Bavix persistence behavior.
+Phases 0 through 5 have been completed as non-mutating architecture seams and characterization baselines, as recorded in the Treasury Compass. Every durable runtime phase still requires an explicit tested slice. No phase may silently change current top-up, transfer, withdrawal, balance, event, or Bavix persistence behavior.
 
 ## Phase 0 — Documentation Bootstrap
 
@@ -121,4 +121,4 @@ Stop and obtain explicit direction if a phase would:
 
 ## Recommended next slice
 
-After Phase 0 approval, proceed with **Phase 1 — Current Behavior Characterization**. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately scoped because it changes a production event contract and may require consumer coordination.
+Complete the additive Inventory-operation planning seam for recognition, reclassification, adjustment, and operation-targeted reversal. Then make the Phase 6 ledger decision before adding persistence or money movement. Keep **Treasury Boundary Debt Slice 1 — Decouple Wallet DisbursementFailed Event From Voucher Model** separately scoped because it changes a production event contract and may require consumer coordination.

@@ -55,6 +55,7 @@ Treasury can store opaque scalar references supplied by x-change, but those refe
 - Settlement Envelopes;
 - Execution Engine and provider workflow orchestration;
 - decisions to request allocate, draw, release, repay, reverse, retry, or reconcile;
+- funding-intent lifecycle, provider-evidence matching, finality policy, suspense, and the decision to request Inventory recognition, reclassification, adjustment, or reversal;
 - Cockpit-oriented integration/read models.
 
 ## Interaction contract
@@ -76,6 +77,7 @@ The exact interfaces and DTOs are reserved for a separately approved planning sl
 - Cockpit presents operator/read-model views but does not own accounting truth.
 - x-journal may preserve immutable evidence but does not own Treasury state.
 - external providers and banks own their reported balances; Treasury reconciles references/observations rather than adopting those values as wallet truth.
+- provider adapter packages may own transport, authentication, and payload normalization; those adapters cannot authorize an Account credit or mutate Treasury directly.
 
 ## Legacy Boundary Debt
 
