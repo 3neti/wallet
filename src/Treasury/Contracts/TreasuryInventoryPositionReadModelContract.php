@@ -9,4 +9,6 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryInventoryPositionData;
 interface TreasuryInventoryPositionReadModelContract
 {
     public function find(string $inventoryReference): ?TreasuryInventoryPositionData;
+
+    public function operationExists(string $operationReference): bool;
 }

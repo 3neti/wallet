@@ -303,6 +303,10 @@ it('exposes a read-only Inventory position backed by the operation ledger', func
         ->and($position->balanceMinor)->toBe(25000)
         ->and($position->lastOperationReference)->toBe('recognition:001')
         ->and($position->hasTreasuryFacts)->toBeTrue()
+        ->and(app(TreasuryInventoryPositionReadModelContract::class)
+            ->operationExists('recognition:001'))->toBeTrue()
+        ->and(app(TreasuryInventoryPositionReadModelContract::class)
+            ->operationExists('recognition:missing'))->toBeFalse()
         ->and($position->metadata['treasury_facts'])->toBe('present')
         ->and(app(TreasuryInventoryPositionReadModelContract::class)->find('inventory:missing'))->toBeNull();
 });

@@ -11,6 +11,13 @@ use LBHurtado\Wallet\Treasury\Models\TreasuryInventoryOperation;
 
 final class DatabaseTreasuryInventoryPositionReadModel implements TreasuryInventoryPositionReadModelContract
 {
+    public function operationExists(string $operationReference): bool
+    {
+        return TreasuryInventoryOperation::query()
+            ->where('operation_reference', trim($operationReference))
+            ->exists();
+    }
+
     public function find(string $inventoryReference): ?TreasuryInventoryPositionData
     {
         $inventory = TreasuryInventory::query()

@@ -8,6 +8,7 @@ use Bavix\Wallet\Models\Wallet;
 use LBHurtado\Wallet\Tests\Models\User;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionProvisioningContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDefinitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
@@ -61,6 +62,10 @@ it('recognizes provider funds into clearing and allocates them once to client fu
         ->and($clearingLedger->getBalanceIntAttribute())->toBe(0)
         ->and($clientLedger->getBalanceIntAttribute())->toBe(2_000_000_00)
         ->and(TreasuryPositionOperation::query()->count())->toBe(2)
+        ->and(app(TreasuryPositionReadModelContract::class)
+            ->operationExists($firstRecognition->operationReference))->toBeTrue()
+        ->and(app(TreasuryPositionReadModelContract::class)
+            ->operationExists('position-operation:missing'))->toBeFalse()
         ->and(Transaction::query()->count())->toBe($transactionsBefore + 3)
         ->and(Transfer::query()->count())->toBe($transfersBefore + 1);
 });

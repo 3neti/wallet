@@ -8,6 +8,7 @@ use Bavix\Wallet\Services\WalletServiceInterface;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionData;
 use LBHurtado\Wallet\Treasury\Models\TreasuryPosition;
+use LBHurtado\Wallet\Treasury\Models\TreasuryPositionOperation;
 
 final readonly class BavixTreasuryPositionReadModel implements TreasuryPositionReadModelContract
 {
@@ -23,6 +24,13 @@ final readonly class BavixTreasuryPositionReadModel implements TreasuryPositionR
             ->first();
 
         return $position === null ? null : $this->positionData($position);
+    }
+
+    public function operationExists(string $operationReference): bool
+    {
+        return TreasuryPositionOperation::query()
+            ->where('operation_reference', trim($operationReference))
+            ->exists();
     }
 
     public function forPrincipal(string $principalReference): array

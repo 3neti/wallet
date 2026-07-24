@@ -23,4 +23,6 @@ interface TreasuryPositionReadModelContract
         string $connectionReference,
         string $currency,
     ): array;
+
+    public function operationExists(string $operationReference): bool;
 }
