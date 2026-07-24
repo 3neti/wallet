@@ -10,6 +10,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('treasury_positions')) {
+            return;
+        }
+
         Schema::create('treasury_positions', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('settlement_resource_id')

@@ -10,6 +10,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('treasury_position_operations')) {
+            return;
+        }
+
         Schema::create('treasury_position_operations', function (Blueprint $table): void {
             $table->id();
             $table->string('operation_reference', 191)->unique();
