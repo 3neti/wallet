@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 use JsonException;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReservationData;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionOperationType;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionPurpose;
 use LBHurtado\Wallet\Treasury\Exceptions\TreasuryInvariantViolation;
@@ -234,6 +237,246 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             }
 
             return $this->allocationData($existing);
+        }
+    }
+
+    public function reserve(
+        TreasuryPositionReservationData $reservation,
+    ): TreasuryPositionReservationData {
+        return $this->reservationData($this->transferPositionBalance(
+            movement: $reservation,
+            type: TreasuryPositionOperationType::Reservation,
+            sourcePurpose: TreasuryPositionPurpose::ClientFunds,
+            destinationPurpose: TreasuryPositionPurpose::PayCodeReserve,
+        ));
+    }
+
+    public function release(
+        TreasuryPositionReleaseData $release,
+    ): TreasuryPositionReleaseData {
+        return $this->releaseData($this->transferPositionBalance(
+            movement: $release,
+            type: TreasuryPositionOperationType::Release,
+            sourcePurpose: TreasuryPositionPurpose::PayCodeReserve,
+            destinationPurpose: TreasuryPositionPurpose::ClientFunds,
+        ));
+    }
+
+    public function derecognize(
+        TreasuryPositionDerecognitionData $derecognition,
+    ): TreasuryPositionDerecognitionData {
+        $this->assertRequest(
+            $derecognition->operationReference,
+            $derecognition->idempotencyKey,
+            $derecognition->amountMinor,
+            $derecognition->currency,
+            $derecognition->externalReference,
+        );
+        $requestHash = $this->requestHash(
+            TreasuryPositionOperationType::Derecognition,
+            $derecognition->toArray(),
+        );
+        $existing = $this->existing(
+            $derecognition->idempotencyKey,
+            $requestHash,
+            TreasuryPositionOperationType::Derecognition,
+        );
+
+        if ($existing !== null) {
+            return $this->derecognitionData($existing);
+        }
+
+        try {
+            return DB::transaction(function () use ($derecognition, $requestHash): TreasuryPositionDerecognitionData {
+                $source = $this->lockedPosition(
+                    $derecognition->sourcePositionReference,
+                );
+                $existing = $this->existing(
+                    $derecognition->idempotencyKey,
+                    $requestHash,
+                    TreasuryPositionOperationType::Derecognition,
+                    true,
+                );
+
+                if ($existing !== null) {
+                    return $this->derecognitionData($existing);
+                }
+
+                $this->assertPosition(
+                    $source,
+                    TreasuryPositionPurpose::PayCodeReserve,
+                    $derecognition->currency,
+                );
+                $this->assertOperationReferenceAvailable(
+                    $derecognition->operationReference,
+                );
+                $ledger = $this->lockedLedger((int) $source->internal_ledger_id);
+                $transaction = $ledger->withdraw($derecognition->amountMinor, [
+                    ...$derecognition->metadata,
+                    'treasury_position_operation_reference' => $derecognition->operationReference,
+                    'treasury_position_reference' => $source->position_reference,
+                    'treasury_operation_type' => TreasuryPositionOperationType::Derecognition->value,
+                ], true);
+
+                return $this->derecognitionData(TreasuryPositionOperation::query()->create([
+                    'operation_reference' => $derecognition->operationReference,
+                    'idempotency_key' => $derecognition->idempotencyKey,
+                    'request_hash' => $requestHash,
+                    'operation_type' => TreasuryPositionOperationType::Derecognition,
+                    'source_position_id' => $source->getKey(),
+                    'amount_minor' => $derecognition->amountMinor,
+                    'currency' => $derecognition->currency,
+                    'external_reference' => $derecognition->externalReference,
+                    'source_transaction_id' => $transaction->getKey(),
+                    'source_transaction_uuid' => $transaction->uuid,
+                    'status' => 'committed',
+                    'metadata' => $derecognition->metadata,
+                ]));
+            }, attempts: 5);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = $this->existing(
+                $derecognition->idempotencyKey,
+                $requestHash,
+                TreasuryPositionOperationType::Derecognition,
+            );
+
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $this->derecognitionData($existing);
+        }
+    }
+
+    private function transferPositionBalance(
+        TreasuryPositionReservationData|TreasuryPositionReleaseData $movement,
+        TreasuryPositionOperationType $type,
+        TreasuryPositionPurpose $sourcePurpose,
+        TreasuryPositionPurpose $destinationPurpose,
+    ): TreasuryPositionOperation {
+        $this->assertRequest(
+            $movement->operationReference,
+            $movement->idempotencyKey,
+            $movement->amountMinor,
+            $movement->currency,
+            $movement->externalReference,
+        );
+
+        if ($movement->sourcePositionReference === $movement->destinationPositionReference) {
+            throw new TreasuryInvariantViolation(
+                'Treasury Position movement requires distinct source and destination Positions.',
+            );
+        }
+
+        $requestHash = $this->requestHash($type, $movement->toArray());
+        $existing = $this->existing(
+            $movement->idempotencyKey,
+            $requestHash,
+            $type,
+        );
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        try {
+            return DB::transaction(function () use (
+                $movement,
+                $type,
+                $sourcePurpose,
+                $destinationPurpose,
+                $requestHash,
+            ): TreasuryPositionOperation {
+                $positions = $this->lockedPositions([
+                    $movement->sourcePositionReference,
+                    $movement->destinationPositionReference,
+                ]);
+                $source = $positions->get($movement->sourcePositionReference);
+                $destination = $positions->get($movement->destinationPositionReference);
+
+                if (! $source instanceof TreasuryPosition || ! $destination instanceof TreasuryPosition) {
+                    throw new TreasuryInvariantViolation(
+                        'Treasury Position movement Position was not found.',
+                    );
+                }
+
+                $existing = $this->existing(
+                    $movement->idempotencyKey,
+                    $requestHash,
+                    $type,
+                    true,
+                );
+
+                if ($existing !== null) {
+                    return $existing;
+                }
+
+                $this->assertPosition($source, $sourcePurpose, $movement->currency);
+                $this->assertPosition(
+                    $destination,
+                    $destinationPurpose,
+                    $movement->currency,
+                );
+                $this->assertCompatiblePositions($source, $destination);
+                $this->assertOperationReferenceAvailable($movement->operationReference);
+                $ledgers = $this->lockedLedgers([
+                    (int) $source->internal_ledger_id,
+                    (int) $destination->internal_ledger_id,
+                ]);
+                $sourceLedger = $ledgers->get((int) $source->internal_ledger_id);
+                $destinationLedger = $ledgers->get((int) $destination->internal_ledger_id);
+
+                if (! $sourceLedger instanceof Wallet || ! $destinationLedger instanceof Wallet) {
+                    throw new TreasuryInvariantViolation(
+                        'Treasury Position movement ledger was not found.',
+                    );
+                }
+
+                $transfer = $sourceLedger->transfer(
+                    $destinationLedger,
+                    $movement->amountMinor,
+                    [
+                        ...$movement->metadata,
+                        'treasury_position_operation_reference' => $movement->operationReference,
+                        'treasury_source_position_reference' => $source->position_reference,
+                        'treasury_destination_position_reference' => $destination->position_reference,
+                        'treasury_operation_type' => $type->value,
+                    ],
+                );
+                $transfer->loadMissing(['withdraw', 'deposit']);
+
+                return TreasuryPositionOperation::query()->create([
+                    'operation_reference' => $movement->operationReference,
+                    'idempotency_key' => $movement->idempotencyKey,
+                    'request_hash' => $requestHash,
+                    'operation_type' => $type,
+                    'source_position_id' => $source->getKey(),
+                    'destination_position_id' => $destination->getKey(),
+                    'amount_minor' => $movement->amountMinor,
+                    'currency' => $movement->currency,
+                    'external_reference' => $movement->externalReference,
+                    'transfer_id' => $transfer->getKey(),
+                    'transfer_uuid' => $transfer->uuid,
+                    'source_transaction_id' => $transfer->withdraw->getKey(),
+                    'source_transaction_uuid' => $transfer->withdraw->uuid,
+                    'destination_transaction_id' => $transfer->deposit->getKey(),
+                    'destination_transaction_uuid' => $transfer->deposit->uuid,
+                    'status' => 'committed',
+                    'metadata' => $movement->metadata,
+                ]);
+            }, attempts: 5);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = $this->existing(
+                $movement->idempotencyKey,
+                $requestHash,
+                $type,
+            );
+
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $existing;
         }
     }
 
@@ -482,6 +725,70 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             sourceTransactionUuid: $operation->source_transaction_uuid,
             destinationTransactionId: $operation->destination_transaction_id,
             destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function reservationData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionReservationData {
+        $operation->loadMissing(['sourcePosition', 'destinationPosition']);
+
+        return new TreasuryPositionReservationData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            destinationPositionReference: $operation->destinationPosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            transferId: $operation->transfer_id,
+            transferUuid: $operation->transfer_uuid,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            destinationTransactionId: $operation->destination_transaction_id,
+            destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function releaseData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionReleaseData {
+        $operation->loadMissing(['sourcePosition', 'destinationPosition']);
+
+        return new TreasuryPositionReleaseData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            destinationPositionReference: $operation->destinationPosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            transferId: $operation->transfer_id,
+            transferUuid: $operation->transfer_uuid,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            destinationTransactionId: $operation->destination_transaction_id,
+            destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function derecognitionData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionDerecognitionData {
+        $operation->loadMissing('sourcePosition');
+
+        return new TreasuryPositionDerecognitionData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
             metadata: $operation->metadata ?? [],
         );
     }

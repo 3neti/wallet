@@ -11,7 +11,10 @@ use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionProvisioningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDefinitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReservationData;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryCustodyMode;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionPurpose;
 use LBHurtado\Wallet\Treasury\Exceptions\TreasuryInvariantViolation;
@@ -98,6 +101,81 @@ it('recognizes an opening balance into unattributed funds and allocates it to cl
     expect($allocation->transferUuid)->not->toBeNull()
         ->and($unattributedLedger->getBalanceIntAttribute())->toBe(750_000_00)
         ->and($clientLedger->getBalanceIntAttribute())->toBe(250_000_00);
+});
+
+it('reserves releases and derecognizes Pay Code funds exactly once', function () {
+    [$clearing, $client] = treasuryOperationPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $clientOwner = $client->principal;
+    $reserveData = app(TreasuryPositionProvisioningContract::class)->provision(
+        $clientOwner,
+        treasuryOperationPositionDefinition(
+            principal: $clientOwner,
+            purpose: TreasuryPositionPurpose::PayCodeReserve,
+        ),
+    );
+    $reserve = TreasuryPosition::query()
+        ->where('position_reference', $reserveData->positionReference)
+        ->sole();
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'position-recognition:provider:pay-code-funds',
+        destinationPositionReference: $clearing->position_reference,
+        amountMinor: 50_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-recognition-key:provider:pay-code-funds',
+        externalReference: 'netbank:pay-code-funds',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'position-allocation:provider:pay-code-funds',
+        sourcePositionReference: $clearing->position_reference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 50_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-allocation-key:provider:pay-code-funds',
+        externalReference: 'position-recognition:provider:pay-code-funds',
+    ));
+    $reservation = new TreasuryPositionReservationData(
+        operationReference: 'position-reservation:pay-code:TEST-0001',
+        sourcePositionReference: $client->position_reference,
+        destinationPositionReference: $reserve->position_reference,
+        amountMinor: 12_50,
+        currency: 'PHP',
+        idempotencyKey: 'position-reservation-key:pay-code:TEST-0001',
+        externalReference: 'pay-code:TEST-0001',
+    );
+    $release = new TreasuryPositionReleaseData(
+        operationReference: 'position-release:pay-code:TEST-0001:partial',
+        sourcePositionReference: $reserve->position_reference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 2_50,
+        currency: 'PHP',
+        idempotencyKey: 'position-release-key:pay-code:TEST-0001:partial',
+        externalReference: $reservation->operationReference,
+    );
+    $derecognition = new TreasuryPositionDerecognitionData(
+        operationReference: 'position-derecognition:pay-code:TEST-0001',
+        sourcePositionReference: $reserve->position_reference,
+        amountMinor: 10_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-derecognition-key:pay-code:TEST-0001',
+        externalReference: 'netbank:payout:123',
+    );
+
+    $firstReservation = $runtime->reserve($reservation);
+    $secondReservation = $runtime->reserve($reservation);
+    $firstRelease = $runtime->release($release);
+    $secondRelease = $runtime->release($release);
+    $firstDerecognition = $runtime->derecognize($derecognition);
+    $secondDerecognition = $runtime->derecognize($derecognition);
+    $clientLedger = Wallet::query()->findOrFail($client->internal_ledger_id);
+    $reserveLedger = Wallet::query()->findOrFail($reserve->internal_ledger_id);
+
+    expect($secondReservation->toArray())->toBe($firstReservation->toArray())
+        ->and($secondRelease->toArray())->toBe($firstRelease->toArray())
+        ->and($secondDerecognition->toArray())->toBe($firstDerecognition->toArray())
+        ->and($clientLedger->getBalanceIntAttribute())->toBe(40_00)
+        ->and($reserveLedger->getBalanceIntAttribute())->toBe(0)
+        ->and(TreasuryPositionOperation::query()->count())->toBe(5);
 });
 
 it('rejects allocations across provider connections', function () {
