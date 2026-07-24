@@ -39,6 +39,23 @@ final readonly class BavixTreasuryPositionReadModel implements TreasuryPositionR
             ->all();
     }
 
+    public function forConnection(
+        string $provider,
+        string $connectionReference,
+        string $currency,
+    ): array {
+        return TreasuryPosition::query()
+            ->with('settlementResource')
+            ->where('provider', mb_strtolower(trim($provider)))
+            ->where('connection_reference', trim($connectionReference))
+            ->where('currency', mb_strtoupper(trim($currency)))
+            ->orderBy('purpose')
+            ->orderBy('principal_reference')
+            ->get()
+            ->map(fn (TreasuryPosition $position): TreasuryPositionData => $this->positionData($position))
+            ->all();
+    }
+
     private function positionData(TreasuryPosition $position): TreasuryPositionData
     {
         $ledger = $this->ledgers->getById((int) $position->internal_ledger_id);

@@ -14,4 +14,13 @@ interface TreasuryPositionReadModelContract
      * @return list<TreasuryPositionData>
      */
     public function forPrincipal(string $principalReference): array;
+
+    /**
+     * @return list<TreasuryPositionData>
+     */
+    public function forConnection(
+        string $provider,
+        string $connectionReference,
+        string $currency,
+    ): array;
 }

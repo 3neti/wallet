@@ -114,16 +114,61 @@ it('reads position balances without exposing internal ledger identifiers', funct
         ]);
 });
 
+it('reads a provider connection portfolio without exposing internal ledgers', function () {
+    $firstPrincipal = User::factory()->create();
+    $secondPrincipal = User::factory()->create();
+    $runtime = app(TreasuryPositionProvisioningContract::class);
+    $runtime->provision(
+        $firstPrincipal,
+        treasuryPositionDefinition(),
+    );
+    $runtime->provision(
+        $secondPrincipal,
+        treasuryPositionDefinition(
+            positionReference: 'position:netbank:primary:php:user:6',
+            idempotencyKey: 'position-registration:netbank:user:6',
+            mandateReference: 'mandate:user:6:treasury',
+            principalReference: 'principal:user:6',
+        ),
+    );
+    $runtime->provision(
+        $secondPrincipal,
+        treasuryPositionDefinition(
+            provider: 'paynamics_constellation',
+            positionReference: 'position:paynamics:primary:php:user:6',
+            resourceReference: 'resource:paynamics:primary:php',
+            idempotencyKey: 'position-registration:paynamics:user:6',
+            mandateReference: 'mandate:user:6:paynamics',
+            principalReference: 'principal:user:6',
+        ),
+    );
+
+    $positions = app(TreasuryPositionReadModelContract::class)
+        ->forConnection('NETBANK', 'primary', 'php');
+
+    expect($positions)->toHaveCount(2)
+        ->and(collect($positions)->pluck('provider')->unique()->all())->toBe(['netbank'])
+        ->and(collect($positions)->pluck('connectionReference')->unique()->all())->toBe(['primary'])
+        ->and(collect($positions)->pluck('currency')->unique()->all())->toBe(['PHP'])
+        ->and($positions[0]->toArray())->not->toHaveKeys([
+            'wallet',
+            'wallet_id',
+            'internalLedgerId',
+            'internalLedgerUuid',
+        ]);
+});
+
 function treasuryPositionDefinition(
     string $provider = 'netbank',
     string $positionReference = 'position:netbank:primary:php:user:5',
     string $resourceReference = 'resource:netbank:primary:php',
     string $idempotencyKey = 'position-registration:netbank:user:5',
     string $mandateReference = 'mandate:user:5:treasury',
+    string $principalReference = 'principal:user:5',
 ): TreasuryPositionDefinitionData {
     return new TreasuryPositionDefinitionData(
         positionReference: $positionReference,
-        principalReference: 'principal:user:5',
+        principalReference: $principalReference,
         mandateReference: $mandateReference,
         settlementResourceReference: $resourceReference,
         settlementResourceType: 'provider_deposit_account',
