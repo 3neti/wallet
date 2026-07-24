@@ -3,7 +3,9 @@
 namespace LBHurtado\Wallet;
 
 use Illuminate\Support\ServiceProvider;
+use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
 use LBHurtado\Wallet\Providers\EventServiceProvider;
+use LBHurtado\Wallet\Services\SystemUserResolverService;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationPlanningContract;
@@ -32,6 +34,15 @@ class WalletServiceProvider extends ServiceProvider
 
         // Register event service provider
         $this->app->register(EventServiceProvider::class);
+
+        $this->app->singleton(
+            SystemUserResolverService::class
+        );
+
+        $this->app->alias(
+            SystemUserResolverService::class,
+            SystemUserResolverContract::class
+        );
 
         $this->app->singleton(
             TreasuryPlanningContract::class,

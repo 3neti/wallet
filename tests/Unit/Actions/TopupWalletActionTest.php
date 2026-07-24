@@ -5,6 +5,7 @@ use Bavix\Wallet\Models\Transaction;
 use Bavix\Wallet\Models\Transfer;
 use Illuminate\Support\Facades\Config;
 use LBHurtado\Wallet\Actions\TopupWalletAction;
+use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
 use LBHurtado\Wallet\Tests\Models\User;
 
@@ -24,13 +25,13 @@ beforeEach(function () {
 
 it('handles wallet top-ups via system user transfer', function () {
     // Mock dependencies
-    $systemUserResolverMock = Mockery::mock(SystemUserResolverService::class);
+    $systemUserResolverMock = Mockery::mock(SystemUserResolverContract::class);
     $systemUserMock = Mockery::mock(Wallet::class);
     $walletMock = Mockery::mock(Wallet::class);
     $transferMock = Mockery::mock(Transfer::class);
 
     // Bind the mock system resolver into the IoC container
-    $this->app->instance(SystemUserResolverService::class, $systemUserResolverMock);
+    $this->app->instance(SystemUserResolverContract::class, $systemUserResolverMock);
 
     // Define expectations
     $systemUserResolverMock->shouldReceive('resolve')
@@ -43,7 +44,7 @@ it('handles wallet top-ups via system user transfer', function () {
         ->andReturn($transferMock);
 
     // Call the action
-    $action = new TopupWalletAction;
+    $action = new TopupWalletAction($systemUserResolverMock);
     $result = $action->handle($walletMock, 1000.0);
 
     // Assert the result is what we expect (the mocked transfer)

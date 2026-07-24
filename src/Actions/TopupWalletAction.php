@@ -3,16 +3,21 @@
 namespace LBHurtado\Wallet\Actions;
 
 use Bavix\Wallet\Interfaces\Wallet;
-use LBHurtado\Wallet\Services\SystemUserResolverService;
+use Bavix\Wallet\Models\Transfer;
+use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
 use Lorisleiva\Actions\Concerns\AsAction;
 
 class TopupWalletAction
 {
     use AsAction;
 
-    public function handle(Wallet $user, float $amount): \Bavix\Wallet\Models\Transfer
+    public function __construct(
+        private readonly SystemUserResolverContract $systemUserResolver,
+    ) {}
+
+    public function handle(Wallet $user, float $amount): Transfer
     {
-        $system = app(SystemUserResolverService::class)->resolve();
+        $system = $this->systemUserResolver->resolve();
 
         return $system->transferFloat($user, $amount);
     }
