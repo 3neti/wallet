@@ -65,6 +65,36 @@ it('recognizes provider funds into clearing and allocates them once to client fu
         ->and(Transfer::query()->count())->toBe($transfersBefore + 1);
 });
 
+it('recognizes an opening balance into unattributed funds and allocates it to client funds', function () {
+    [$unattributed, $client] = treasuryOperationPositions(
+        TreasuryPositionPurpose::LegacyUnattributed,
+    );
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $recognition = $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'opening-position-recognition:provider:snapshot-1',
+        destinationPositionReference: $unattributed->position_reference,
+        amountMinor: 1_000_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'opening-position-recognition-key:provider:snapshot-1',
+        externalReference: 'provider-balance:snapshot-1',
+    ));
+    $allocation = $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'legacy-position-allocation:provider:account-1',
+        sourcePositionReference: $unattributed->position_reference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 250_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'legacy-position-allocation-key:provider:account-1',
+        externalReference: $recognition->operationReference,
+    ));
+    $unattributedLedger = Wallet::query()->findOrFail($unattributed->internal_ledger_id);
+    $clientLedger = Wallet::query()->findOrFail($client->internal_ledger_id);
+
+    expect($allocation->transferUuid)->not->toBeNull()
+        ->and($unattributedLedger->getBalanceIntAttribute())->toBe(750_000_00)
+        ->and($clientLedger->getBalanceIntAttribute())->toBe(250_000_00);
+});
+
 it('rejects allocations across provider connections', function () {
     [$clearing] = treasuryOperationPositions();
     $clientOwner = User::factory()->create();
@@ -127,8 +157,9 @@ it('rejects idempotency reuse with changed monetary input', function () {
 /**
  * @return array{TreasuryPosition, TreasuryPosition}
  */
-function treasuryOperationPositions(): array
-{
+function treasuryOperationPositions(
+    TreasuryPositionPurpose $sourcePurpose = TreasuryPositionPurpose::TreasuryClearing,
+): array {
     $system = User::factory()->create();
     $client = User::factory()->create();
     $runtime = app(TreasuryPositionProvisioningContract::class);
@@ -136,7 +167,7 @@ function treasuryOperationPositions(): array
         $system,
         treasuryOperationPositionDefinition(
             principal: $system,
-            purpose: TreasuryPositionPurpose::TreasuryClearing,
+            purpose: $sourcePurpose,
         ),
     );
     $clientData = $runtime->provision(

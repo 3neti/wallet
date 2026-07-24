@@ -61,9 +61,12 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     return $this->recognitionData($existing);
                 }
 
-                $this->assertPosition(
+                $this->assertPositionPurpose(
                     $destination,
-                    TreasuryPositionPurpose::TreasuryClearing,
+                    [
+                        TreasuryPositionPurpose::TreasuryClearing,
+                        TreasuryPositionPurpose::LegacyUnattributed,
+                    ],
                     $recognition->currency,
                 );
                 $this->assertOperationReferenceAvailable($recognition->operationReference);
@@ -162,9 +165,12 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     return $this->allocationData($existing);
                 }
 
-                $this->assertPosition(
+                $this->assertPositionPurpose(
                     $source,
-                    TreasuryPositionPurpose::TreasuryClearing,
+                    [
+                        TreasuryPositionPurpose::TreasuryClearing,
+                        TreasuryPositionPurpose::LegacyUnattributed,
+                    ],
                     $allocation->currency,
                 );
                 $this->assertPosition(
@@ -270,9 +276,20 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         TreasuryPositionPurpose $purpose,
         string $currency,
     ): void {
+        $this->assertPositionPurpose($position, [$purpose], $currency);
+    }
+
+    /**
+     * @param  list<TreasuryPositionPurpose>  $purposes
+     */
+    private function assertPositionPurpose(
+        TreasuryPosition $position,
+        array $purposes,
+        string $currency,
+    ): void {
         if (
             $position->status !== 'active'
-            || $position->purpose !== $purpose
+            || ! in_array($position->purpose, $purposes, true)
             || $position->currency !== $currency
         ) {
             throw new TreasuryInvariantViolation(
