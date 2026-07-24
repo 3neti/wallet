@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace LBHurtado\Wallet\Treasury\Runtime;
+namespace LBHurtado\Wallet\Treasury\Adapters\Bavix;
 
 use Bavix\Wallet\Models\Wallet;
 use Illuminate\Database\Eloquent\Collection;
