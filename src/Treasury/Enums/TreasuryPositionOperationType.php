@@ -11,4 +11,6 @@ enum TreasuryPositionOperationType: string
     case Reservation = 'reservation';
     case Release = 'release';
     case Derecognition = 'derecognition';
+    case CommercialCharge = 'commercial_charge';
+    case CommercialReversal = 'commercial_reversal';
 }

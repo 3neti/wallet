@@ -16,6 +16,8 @@ Intended future semantics only. The equations and lifecycle mappings in this doc
 | Collateralized liquidity | Eligible settlement capacity supported by recognized collateral or another non-cash backing resource | Not implemented |
 | Usable balance | Policy-approved Inventory still deployable after active commitments, holds, limits, and adjustments | Not implemented; current Bavix balance is not automatically this value |
 | Provider/bank balance | Cash or settlement position reported by an external provider or bank | External system/reconciliation source |
+| Commercial charge | Amount moved from Client Funds into Commercial Waterfall Clearing under an approved external sale | Durable Treasury Position operation |
+| Provider/product/partner/royalty/tax/revenue position | Internal amount classified by an externally approved Commercial Waterfall | Durable Treasury Position and operation ledgers |
 
 Reserved balance and allocated balance may describe the same committed value at different layers. They must not be double-counted. The future ledger/read-model design must state whether a reservation is the wallet-backed implementation of an Allocation or a separate constraint.
 
@@ -43,6 +45,15 @@ Usable Resource Capacity = Eligible Resource Capacity - Active Allocations - Oth
 ```
 
 These are conceptual formulas. Restored capacity must remain capped by the approved facility/resource policy; non-revolving repayment may reduce outstanding utilization without restoring the Allocation remainder. Currency handling, valuation, concurrency, and aggregation require explicit design before implementation.
+
+For an internally collected commercial charge:
+
+```text
+Commercial Charge = Sum(Commercial Waterfall Allocation Legs)
+Commercial Waterfall Clearing after complete posting = 0
+```
+
+The Pay Code principal is excluded from both sides of this equation. Provider Cost Payable is not evidence that an external provider has already received cash; it records an internal classified obligation pending the provider's approved settlement process.
 
 ## Lifecycle mapping
 

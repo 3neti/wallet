@@ -80,6 +80,27 @@ A reversal derives its affected Inventory or Allocation from the referenced oper
 
 Callers request an Allocation. They do not make reservation storage the cross-package domain contract.
 
+## Commercial Charge
+
+A **Commercial Charge** is an internal accounting movement from a Client Funds Position into a Commercial Waterfall Clearing Position under an opaque, approved external sale reference.
+
+It is distinct from Pay Code principal reservation. Treasury does not decide the price, product, provider fee, commission, royalty, tax, or recipient. The owning commercial layer supplies the exact amount and references; Treasury enforces balance, currency, position-purpose, provider-connection, and idempotency invariants.
+
+## Commercial Waterfall Posting
+
+A **Commercial Waterfall Posting** allocates value already present in a Commercial Waterfall Clearing Position into explicitly purposed positions:
+
+- Provider Cost Payable;
+- Product Revenue;
+- Partner Commission Payable;
+- Royalty Payable;
+- Tax Payable;
+- Commercial Revenue.
+
+These purposes describe accounting destinations. They do not establish the commercial or legal right to receive an amount. The commercial policy and attribution remain outside 3neti/wallet.
+
+Commercial movements are append-only. A correction is an exact compensating reversal referencing the original charge or allocation; the original movement is never deleted or rewritten.
+
 ## Reference flow
 
 ```text
@@ -109,3 +130,7 @@ Settlement Resource
 - an adjustment uses an explicit signed delta and cannot silently replace recognition;
 - every mutating request is idempotent under a caller-supplied operation key;
 - cross-package references are opaque to Treasury and never import x-change domain classes.
+- Pay Code principal never enters Commercial Waterfall Clearing;
+- Commercial Waterfall allocations cannot target Client Funds;
+- a commercial reversal must exactly compensate one eligible original movement;
+- replaying a commercial charge, allocation, or reversal cannot move value twice.

@@ -30,6 +30,7 @@ Bavix wallet primitives and approved Treasury persistence
 - draw/capture, release, repay, and reverse semantics;
 - operation idempotency and concurrency invariants;
 - Treasury ledger semantics and accounting read models;
+- package-neutral Commercial Charge, classified Commercial Waterfall Position, and compensating-reversal mechanics;
 - Bavix integration and schema adaptation decisions;
 - deployable, allocated, drawn, repaid, reversed, and outstanding accounting measures.
 
@@ -43,6 +44,7 @@ Bavix wallet primitives and approved Treasury persistence
 - claim UX;
 - x-change commercial lifecycle orchestration;
 - provider-specific settlement business rules;
+- commercial prices, catalogs, Waterfall policies, attribution, commission eligibility, or legal entitlement;
 - Cockpit presentation models.
 
 Treasury can store opaque scalar references supplied by x-change, but those references do not transfer ownership of the external aggregate.
@@ -57,6 +59,7 @@ Treasury can store opaque scalar references supplied by x-change, but those refe
 - decisions to request allocate, draw, release, repay, reverse, retry, or reconcile;
 - funding-intent lifecycle, provider-evidence matching, finality policy, suspense, and the decision to request Inventory recognition, reclassification, adjustment, or reversal;
 - Cockpit-oriented integration/read models.
+- selection and approval of x-commerce quote, sale, attribution, and Commercial Waterfall policy snapshots.
 
 ## Interaction contract
 

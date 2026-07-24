@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace LBHurtado\Wallet\Treasury\Contracts;
 
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
@@ -19,6 +21,14 @@ interface TreasuryPositionOperationContract
     public function allocate(
         TreasuryPositionAllocationData $allocation,
     ): TreasuryPositionAllocationData;
+
+    public function charge(
+        TreasuryPositionCommercialChargeData $charge,
+    ): TreasuryPositionCommercialChargeData;
+
+    public function reverseCommercialMovement(
+        TreasuryPositionCommercialReversalData $reversal,
+    ): TreasuryPositionCommercialReversalData;
 
     public function reserve(
         TreasuryPositionReservationData $reservation,

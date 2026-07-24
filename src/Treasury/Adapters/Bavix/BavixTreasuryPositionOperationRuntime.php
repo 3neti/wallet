@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\DB;
 use JsonException;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
@@ -168,19 +170,27 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     return $this->allocationData($existing);
                 }
 
-                $this->assertPositionPurpose(
-                    $source,
-                    [
-                        TreasuryPositionPurpose::TreasuryClearing,
-                        TreasuryPositionPurpose::LegacyUnattributed,
-                    ],
-                    $allocation->currency,
-                );
-                $this->assertPosition(
-                    $destination,
-                    TreasuryPositionPurpose::ClientFunds,
-                    $allocation->currency,
-                );
+                if ($source->purpose === TreasuryPositionPurpose::CommercialClearing) {
+                    $this->assertPositionPurpose(
+                        $destination,
+                        $this->commercialDestinationPurposes(),
+                        $allocation->currency,
+                    );
+                } else {
+                    $this->assertPositionPurpose(
+                        $source,
+                        [
+                            TreasuryPositionPurpose::TreasuryClearing,
+                            TreasuryPositionPurpose::LegacyUnattributed,
+                        ],
+                        $allocation->currency,
+                    );
+                    $this->assertPosition(
+                        $destination,
+                        TreasuryPositionPurpose::ClientFunds,
+                        $allocation->currency,
+                    );
+                }
                 $this->assertCompatiblePositions($source, $destination);
                 $this->assertOperationReferenceAvailable($allocation->operationReference);
                 $ledgers = $this->lockedLedgers([
@@ -237,6 +247,170 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             }
 
             return $this->allocationData($existing);
+        }
+    }
+
+    public function charge(
+        TreasuryPositionCommercialChargeData $charge,
+    ): TreasuryPositionCommercialChargeData {
+        return $this->commercialChargeData($this->transferPositionBalance(
+            movement: $charge,
+            type: TreasuryPositionOperationType::CommercialCharge,
+            sourcePurpose: TreasuryPositionPurpose::ClientFunds,
+            destinationPurpose: TreasuryPositionPurpose::CommercialClearing,
+        ));
+    }
+
+    public function reverseCommercialMovement(
+        TreasuryPositionCommercialReversalData $reversal,
+    ): TreasuryPositionCommercialReversalData {
+        $this->assertRequest(
+            $reversal->operationReference,
+            $reversal->idempotencyKey,
+            $reversal->amountMinor,
+            $reversal->currency,
+            $reversal->externalReference,
+        );
+
+        if ($reversal->sourcePositionReference === $reversal->destinationPositionReference) {
+            throw new TreasuryInvariantViolation(
+                'Commercial reversal requires distinct source and destination Positions.',
+            );
+        }
+
+        $requestHash = $this->requestHash(
+            TreasuryPositionOperationType::CommercialReversal,
+            $reversal->toArray(),
+        );
+        $existing = $this->existing(
+            $reversal->idempotencyKey,
+            $requestHash,
+            TreasuryPositionOperationType::CommercialReversal,
+        );
+
+        if ($existing !== null) {
+            return $this->commercialReversalData($existing);
+        }
+
+        try {
+            return DB::transaction(function () use ($reversal, $requestHash): TreasuryPositionCommercialReversalData {
+                $positions = $this->lockedPositions([
+                    $reversal->sourcePositionReference,
+                    $reversal->destinationPositionReference,
+                ]);
+                $source = $positions->get($reversal->sourcePositionReference);
+                $destination = $positions->get($reversal->destinationPositionReference);
+
+                if (! $source instanceof TreasuryPosition || ! $destination instanceof TreasuryPosition) {
+                    throw new TreasuryInvariantViolation(
+                        'Commercial reversal Position was not found.',
+                    );
+                }
+
+                $existing = $this->existing(
+                    $reversal->idempotencyKey,
+                    $requestHash,
+                    TreasuryPositionOperationType::CommercialReversal,
+                    true,
+                );
+
+                if ($existing !== null) {
+                    return $this->commercialReversalData($existing);
+                }
+
+                $reversedOperation = TreasuryPositionOperation::query()
+                    ->where('operation_reference', $reversal->reversesOperationReference)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $reversedOperation instanceof TreasuryPositionOperation) {
+                    throw new TreasuryInvariantViolation(
+                        'Commercial reversal source operation was not found.',
+                    );
+                }
+
+                $this->assertCommercialReversal(
+                    $reversal,
+                    $reversedOperation,
+                    $source,
+                    $destination,
+                );
+                $this->assertCompatiblePositions($source, $destination);
+                $this->assertOperationReferenceAvailable($reversal->operationReference);
+
+                if (TreasuryPositionOperation::query()
+                    ->where('operation_type', TreasuryPositionOperationType::CommercialReversal)
+                    ->where('external_reference', $reversal->reversesOperationReference)
+                    ->lockForUpdate()
+                    ->exists()) {
+                    throw new TreasuryOperationConflict(
+                        'Commercial movement has already been reversed.',
+                    );
+                }
+
+                $ledgers = $this->lockedLedgers([
+                    (int) $source->internal_ledger_id,
+                    (int) $destination->internal_ledger_id,
+                ]);
+                $sourceLedger = $ledgers->get((int) $source->internal_ledger_id);
+                $destinationLedger = $ledgers->get((int) $destination->internal_ledger_id);
+
+                if (! $sourceLedger instanceof Wallet || ! $destinationLedger instanceof Wallet) {
+                    throw new TreasuryInvariantViolation(
+                        'Commercial reversal ledger was not found.',
+                    );
+                }
+
+                $transfer = $sourceLedger->transfer(
+                    $destinationLedger,
+                    $reversal->amountMinor,
+                    [
+                        ...$reversal->metadata,
+                        'reverses_treasury_operation_reference' => $reversal->reversesOperationReference,
+                        'treasury_position_operation_reference' => $reversal->operationReference,
+                        'treasury_source_position_reference' => $source->position_reference,
+                        'treasury_destination_position_reference' => $destination->position_reference,
+                        'treasury_operation_type' => TreasuryPositionOperationType::CommercialReversal->value,
+                    ],
+                );
+                $transfer->loadMissing(['withdraw', 'deposit']);
+
+                return $this->commercialReversalData(TreasuryPositionOperation::query()->create([
+                    'operation_reference' => $reversal->operationReference,
+                    'idempotency_key' => $reversal->idempotencyKey,
+                    'request_hash' => $requestHash,
+                    'operation_type' => TreasuryPositionOperationType::CommercialReversal,
+                    'source_position_id' => $source->getKey(),
+                    'destination_position_id' => $destination->getKey(),
+                    'amount_minor' => $reversal->amountMinor,
+                    'currency' => $reversal->currency,
+                    'external_reference' => $reversal->reversesOperationReference,
+                    'transfer_id' => $transfer->getKey(),
+                    'transfer_uuid' => $transfer->uuid,
+                    'source_transaction_id' => $transfer->withdraw->getKey(),
+                    'source_transaction_uuid' => $transfer->withdraw->uuid,
+                    'destination_transaction_id' => $transfer->deposit->getKey(),
+                    'destination_transaction_uuid' => $transfer->deposit->uuid,
+                    'status' => 'committed',
+                    'metadata' => [
+                        ...$reversal->metadata,
+                        'requested_external_reference' => $reversal->externalReference,
+                        'reverses_operation_reference' => $reversal->reversesOperationReference,
+                    ],
+                ]));
+            }, attempts: 5);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = $this->existing(
+                $reversal->idempotencyKey,
+                $requestHash,
+                TreasuryPositionOperationType::CommercialReversal,
+            );
+
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $this->commercialReversalData($existing);
         }
     }
 
@@ -349,7 +523,7 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
     }
 
     private function transferPositionBalance(
-        TreasuryPositionReservationData|TreasuryPositionReleaseData $movement,
+        TreasuryPositionReservationData|TreasuryPositionReleaseData|TreasuryPositionCommercialChargeData $movement,
         TreasuryPositionOperationType $type,
         TreasuryPositionPurpose $sourcePurpose,
         TreasuryPositionPurpose $destinationPurpose,
@@ -558,6 +732,59 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         }
     }
 
+    /**
+     * @return list<TreasuryPositionPurpose>
+     */
+    private function commercialDestinationPurposes(): array
+    {
+        return [
+            TreasuryPositionPurpose::ProviderCostPayable,
+            TreasuryPositionPurpose::ProductRevenue,
+            TreasuryPositionPurpose::PartnerCommissionPayable,
+            TreasuryPositionPurpose::RoyaltyPayable,
+            TreasuryPositionPurpose::TaxPayable,
+            TreasuryPositionPurpose::CommercialRevenue,
+        ];
+    }
+
+    private function assertCommercialReversal(
+        TreasuryPositionCommercialReversalData $reversal,
+        TreasuryPositionOperation $reversedOperation,
+        TreasuryPosition $source,
+        TreasuryPosition $destination,
+    ): void {
+        if (
+            $reversedOperation->amount_minor !== $reversal->amountMinor
+            || $reversedOperation->currency !== $reversal->currency
+            || $reversedOperation->destination_position_id !== $source->getKey()
+            || $reversedOperation->source_position_id !== $destination->getKey()
+        ) {
+            throw new TreasuryInvariantViolation(
+                'Commercial reversal must exactly compensate its source operation.',
+            );
+        }
+
+        if ($reversedOperation->operation_type === TreasuryPositionOperationType::CommercialCharge) {
+            $this->assertPosition($source, TreasuryPositionPurpose::CommercialClearing, $reversal->currency);
+            $this->assertPosition($destination, TreasuryPositionPurpose::ClientFunds, $reversal->currency);
+
+            return;
+        }
+
+        if (
+            $reversedOperation->operation_type === TreasuryPositionOperationType::Allocation
+            && $destination->purpose === TreasuryPositionPurpose::CommercialClearing
+        ) {
+            $this->assertPositionPurpose($source, $this->commercialDestinationPurposes(), $reversal->currency);
+
+            return;
+        }
+
+        throw new TreasuryInvariantViolation(
+            'Treasury Position operation is not an eligible commercial movement.',
+        );
+    }
+
     private function lockedPosition(string $reference): TreasuryPosition
     {
         $position = TreasuryPosition::query()
@@ -719,6 +946,61 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             currency: $operation->currency,
             idempotencyKey: $operation->idempotency_key,
             externalReference: $operation->external_reference,
+            transferId: $operation->transfer_id,
+            transferUuid: $operation->transfer_uuid,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            destinationTransactionId: $operation->destination_transaction_id,
+            destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function commercialChargeData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionCommercialChargeData {
+        $operation->loadMissing(['sourcePosition', 'destinationPosition']);
+
+        return new TreasuryPositionCommercialChargeData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            destinationPositionReference: $operation->destinationPosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            transferId: $operation->transfer_id,
+            transferUuid: $operation->transfer_uuid,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            destinationTransactionId: $operation->destination_transaction_id,
+            destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function commercialReversalData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionCommercialReversalData {
+        $operation->loadMissing(['sourcePosition', 'destinationPosition']);
+
+        return new TreasuryPositionCommercialReversalData(
+            operationReference: $operation->operation_reference,
+            reversesOperationReference: (string) data_get(
+                $operation->metadata,
+                'reverses_operation_reference',
+                $operation->external_reference,
+            ),
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            destinationPositionReference: $operation->destinationPosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: (string) data_get(
+                $operation->metadata,
+                'requested_external_reference',
+                $operation->external_reference,
+            ),
             transferId: $operation->transfer_id,
             transferUuid: $operation->transfer_uuid,
             sourceTransactionId: $operation->source_transaction_id,
