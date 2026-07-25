@@ -178,6 +178,50 @@ it('reserves releases and derecognizes Pay Code funds exactly once', function ()
         ->and(TreasuryPositionOperation::query()->count())->toBe(5);
 });
 
+it('derecognizes legacy unattributed funds without permitting client funds write-downs', function () {
+    [$unattributed, $client] = treasuryOperationPositions(
+        TreasuryPositionPurpose::LegacyUnattributed,
+    );
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'opening-position-recognition:provider:snapshot-write-down',
+        destinationPositionReference: $unattributed->position_reference,
+        amountMinor: 100_00,
+        currency: 'PHP',
+        idempotencyKey: 'opening-position-recognition-key:provider:snapshot-write-down',
+        externalReference: 'provider-balance:snapshot-write-down',
+    ));
+    $derecognition = new TreasuryPositionDerecognitionData(
+        operationReference: 'position-derecognition:legacy-unattributed:provider-outflow',
+        sourcePositionReference: $unattributed->position_reference,
+        amountMinor: 45_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-derecognition-key:legacy-unattributed:provider-outflow',
+        externalReference: 'netbank:provider-outflow',
+    );
+
+    $first = $runtime->derecognize($derecognition);
+    $second = $runtime->derecognize($derecognition);
+    $unattributedLedger = Wallet::query()
+        ->findOrFail($unattributed->internal_ledger_id);
+
+    expect($second->toArray())->toBe($first->toArray())
+        ->and($unattributedLedger->getBalanceIntAttribute())->toBe(55_00)
+        ->and(fn () => $runtime->derecognize(
+            new TreasuryPositionDerecognitionData(
+                operationReference: 'position-derecognition:client-funds:forbidden',
+                sourcePositionReference: $client->position_reference,
+                amountMinor: 1_00,
+                currency: 'PHP',
+                idempotencyKey: 'position-derecognition-key:client-funds:forbidden',
+                externalReference: 'operator:forbidden',
+            ),
+        ))->toThrow(
+            TreasuryInvariantViolation::class,
+            'not eligible for this operation',
+        );
+});
+
 it('rejects allocations across provider connections', function () {
     [$clearing] = treasuryOperationPositions();
     $clientOwner = User::factory()->create();

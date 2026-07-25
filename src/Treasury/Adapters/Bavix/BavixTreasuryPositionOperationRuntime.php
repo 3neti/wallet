@@ -476,9 +476,12 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     return $this->derecognitionData($existing);
                 }
 
-                $this->assertPosition(
+                $this->assertPositionPurpose(
                     $source,
-                    TreasuryPositionPurpose::PayCodeReserve,
+                    [
+                        TreasuryPositionPurpose::PayCodeReserve,
+                        TreasuryPositionPurpose::LegacyUnattributed,
+                    ],
                     $derecognition->currency,
                 );
                 $this->assertOperationReferenceAvailable(
