@@ -185,9 +185,12 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                         ],
                         $allocation->currency,
                     );
-                    $this->assertPosition(
+                    $this->assertPositionPurpose(
                         $destination,
-                        TreasuryPositionPurpose::ClientFunds,
+                        [
+                            TreasuryPositionPurpose::ClientFunds,
+                            TreasuryPositionPurpose::AccountFundingReserve,
+                        ],
                         $allocation->currency,
                     );
                 }
@@ -421,6 +424,17 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             movement: $reservation,
             type: TreasuryPositionOperationType::Reservation,
             sourcePurpose: TreasuryPositionPurpose::ClientFunds,
+            destinationPurpose: TreasuryPositionPurpose::PayCodeReserve,
+        ));
+    }
+
+    public function reserveAccountFunding(
+        TreasuryPositionReservationData $reservation,
+    ): TreasuryPositionReservationData {
+        return $this->reservationData($this->transferPositionBalance(
+            movement: $reservation,
+            type: TreasuryPositionOperationType::Reservation,
+            sourcePurpose: TreasuryPositionPurpose::AccountFundingReserve,
             destinationPurpose: TreasuryPositionPurpose::PayCodeReserve,
         ));
     }

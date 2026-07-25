@@ -34,6 +34,10 @@ interface TreasuryPositionOperationContract
         TreasuryPositionReservationData $reservation,
     ): TreasuryPositionReservationData;
 
+    public function reserveAccountFunding(
+        TreasuryPositionReservationData $reservation,
+    ): TreasuryPositionReservationData;
+
     public function release(
         TreasuryPositionReleaseData $release,
     ): TreasuryPositionReleaseData;

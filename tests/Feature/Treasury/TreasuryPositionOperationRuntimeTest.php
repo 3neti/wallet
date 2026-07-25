@@ -103,6 +103,82 @@ it('recognizes an opening balance into unattributed funds and allocates it to cl
         ->and($clientLedger->getBalanceIntAttribute())->toBe(250_000_00);
 });
 
+it('capitalizes opening funds and reserves Account Funding without using Client Funds', function () {
+    [$unattributed] = treasuryOperationPositions(
+        TreasuryPositionPurpose::LegacyUnattributed,
+    );
+    $system = $unattributed->principal;
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $provisioning = app(TreasuryPositionProvisioningContract::class);
+    $fundingReserve = $provisioning->provision(
+        $system,
+        treasuryOperationPositionDefinition(
+            principal: $system,
+            purpose: TreasuryPositionPurpose::AccountFundingReserve,
+        ),
+    );
+    $payCodeReserve = $provisioning->provision(
+        $system,
+        treasuryOperationPositionDefinition(
+            principal: $system,
+            purpose: TreasuryPositionPurpose::PayCodeReserve,
+        ),
+    );
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'opening-position-recognition:provider:system-capital',
+        destinationPositionReference: $unattributed->position_reference,
+        amountMinor: 100_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'opening-position-recognition-key:provider:system-capital',
+        externalReference: 'provider-balance:system-capital',
+    ));
+    $capitalization = new TreasuryPositionAllocationData(
+        operationReference: 'opening-system-capitalization:netbank-primary',
+        sourcePositionReference: $unattributed->position_reference,
+        destinationPositionReference: $fundingReserve->positionReference,
+        amountMinor: 100_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'opening-system-capitalization-key:netbank-primary',
+        externalReference: 'authorization:deployment-001',
+    );
+    $reservation = new TreasuryPositionReservationData(
+        operationReference: 'account-funding-reservation:pay-code:FUND-0001',
+        sourcePositionReference: $fundingReserve->positionReference,
+        destinationPositionReference: $payCodeReserve->positionReference,
+        amountMinor: 25_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'account-funding-reservation-key:pay-code:FUND-0001',
+        externalReference: 'pay-code:FUND-0001',
+    );
+
+    $firstCapitalization = $runtime->allocate($capitalization);
+    $secondCapitalization = $runtime->allocate($capitalization);
+    $firstReservation = $runtime->reserveAccountFunding($reservation);
+    $secondReservation = $runtime->reserveAccountFunding($reservation);
+    $unattributedLedger = Wallet::query()
+        ->findOrFail($unattributed->internal_ledger_id);
+    $fundingReserveLedger = Wallet::query()
+        ->findOrFail(
+            TreasuryPosition::query()
+                ->where('position_reference', $fundingReserve->positionReference)
+                ->value('internal_ledger_id'),
+        );
+    $payCodeReserveLedger = Wallet::query()
+        ->findOrFail(
+            TreasuryPosition::query()
+                ->where('position_reference', $payCodeReserve->positionReference)
+                ->value('internal_ledger_id'),
+        );
+
+    expect($secondCapitalization->toArray())
+        ->toBe($firstCapitalization->toArray())
+        ->and($secondReservation->toArray())
+        ->toBe($firstReservation->toArray())
+        ->and($unattributedLedger->getBalanceIntAttribute())->toBe(0)
+        ->and($fundingReserveLedger->getBalanceIntAttribute())->toBe(75_000_00)
+        ->and($payCodeReserveLedger->getBalanceIntAttribute())->toBe(25_000_00);
+});
+
 it('reserves releases and derecognizes Pay Code funds exactly once', function () {
     [$clearing, $client] = treasuryOperationPositions();
     $runtime = app(TreasuryPositionOperationContract::class);
