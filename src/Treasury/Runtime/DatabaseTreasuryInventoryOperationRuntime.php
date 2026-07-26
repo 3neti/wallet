@@ -12,6 +12,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use JsonException;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryMetadataSanitizerContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryInventoryAdjustmentData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryInventoryData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryInventoryReclassificationData;
@@ -27,6 +28,10 @@ use LBHurtado\Wallet\Treasury\Models\TreasurySettlementResource;
 final class DatabaseTreasuryInventoryOperationRuntime implements TreasuryInventoryOperationContract
 {
     private const STATUS = 'committed';
+
+    public function __construct(
+        private readonly TreasuryMetadataSanitizerContract $metadataSanitizer,
+    ) {}
 
     public function registerInventory(TreasuryInventoryData $inventory): TreasuryInventoryData
     {
@@ -542,7 +547,9 @@ final class DatabaseTreasuryInventoryOperationRuntime implements TreasuryInvento
                 ? $this->normalizedEffectiveAt($effectiveAt)
                 : CarbonImmutable::now('UTC'),
             'external_reference' => $externalReference,
-            'metadata' => $metadata,
+            'metadata' => $this->metadataSanitizer->forPersistence(
+                $metadata,
+            ),
         ]);
     }
 

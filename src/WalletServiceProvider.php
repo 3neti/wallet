@@ -14,6 +14,7 @@ use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationPlanningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryReadModelContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryMetadataSanitizerContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPlanningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionProvisioningContract;
@@ -24,6 +25,7 @@ use LBHurtado\Wallet\Treasury\ReadModels\WalletBalanceInventoryReadModelService;
 use LBHurtado\Wallet\Treasury\Runtime\DatabaseTreasuryInventoryOperationRuntime;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryInventoryOperationPlanningRuntime;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryPlanningRuntime;
+use LBHurtado\Wallet\Treasury\Services\ConfigTreasuryMetadataSanitizer;
 
 class WalletServiceProvider extends ServiceProvider
 {
@@ -58,6 +60,11 @@ class WalletServiceProvider extends ServiceProvider
         $this->app->singleton(
             TreasuryInventoryOperationPlanningContract::class,
             NullTreasuryInventoryOperationPlanningRuntime::class
+        );
+
+        $this->app->singleton(
+            TreasuryMetadataSanitizerContract::class,
+            ConfigTreasuryMetadataSanitizer::class,
         );
 
         $this->app->singleton(

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use JsonException;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryMetadataSanitizerContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
@@ -26,6 +27,10 @@ use LBHurtado\Wallet\Treasury\Models\TreasuryPositionOperation;
 
 final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOperationContract
 {
+    public function __construct(
+        private readonly TreasuryMetadataSanitizerContract $metadataSanitizer,
+    ) {}
+
     public function recognize(
         TreasuryPositionRecognitionData $recognition,
     ): TreasuryPositionRecognitionData {
@@ -77,7 +82,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                 $this->assertOperationReferenceAvailable($recognition->operationReference);
                 $ledger = $this->lockedLedger((int) $destination->internal_ledger_id);
                 $transaction = $ledger->deposit($recognition->amountMinor, [
-                    ...$recognition->metadata,
+                    ...$this->metadataSanitizer->forPersistence(
+                        $recognition->metadata,
+                    ),
                     'treasury_position_operation_reference' => $recognition->operationReference,
                     'treasury_position_reference' => $destination->position_reference,
                     'treasury_operation_type' => TreasuryPositionOperationType::Recognition->value,
@@ -95,7 +102,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     'destination_transaction_id' => $transaction->getKey(),
                     'destination_transaction_uuid' => $transaction->uuid,
                     'status' => 'committed',
-                    'metadata' => $recognition->metadata,
+                    'metadata' => $this->metadataSanitizer->forPersistence(
+                        $recognition->metadata,
+                    ),
                 ]));
             }, attempts: 5);
         } catch (UniqueConstraintViolationException $exception) {
@@ -210,7 +219,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                 }
 
                 $transfer = $sourceLedger->transfer($destinationLedger, $allocation->amountMinor, [
-                    ...$allocation->metadata,
+                    ...$this->metadataSanitizer->forPersistence(
+                        $allocation->metadata,
+                    ),
                     'treasury_position_operation_reference' => $allocation->operationReference,
                     'treasury_source_position_reference' => $source->position_reference,
                     'treasury_destination_position_reference' => $destination->position_reference,
@@ -235,7 +246,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     'destination_transaction_id' => $transfer->deposit->getKey(),
                     'destination_transaction_uuid' => $transfer->deposit->uuid,
                     'status' => 'committed',
-                    'metadata' => $allocation->metadata,
+                    'metadata' => $this->metadataSanitizer->forPersistence(
+                        $allocation->metadata,
+                    ),
                 ]));
             }, attempts: 5);
         } catch (UniqueConstraintViolationException $exception) {
@@ -368,7 +381,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     $destinationLedger,
                     $reversal->amountMinor,
                     [
-                        ...$reversal->metadata,
+                        ...$this->metadataSanitizer->forPersistence(
+                            $reversal->metadata,
+                        ),
                         'reverses_treasury_operation_reference' => $reversal->reversesOperationReference,
                         'treasury_position_operation_reference' => $reversal->operationReference,
                         'treasury_source_position_reference' => $source->position_reference,
@@ -396,7 +411,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     'destination_transaction_uuid' => $transfer->deposit->uuid,
                     'status' => 'committed',
                     'metadata' => [
-                        ...$reversal->metadata,
+                        ...$this->metadataSanitizer->forPersistence(
+                            $reversal->metadata,
+                        ),
                         'requested_external_reference' => $reversal->externalReference,
                         'reverses_operation_reference' => $reversal->reversesOperationReference,
                     ],
@@ -503,7 +520,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                 );
                 $ledger = $this->lockedLedger((int) $source->internal_ledger_id);
                 $transaction = $ledger->withdraw($derecognition->amountMinor, [
-                    ...$derecognition->metadata,
+                    ...$this->metadataSanitizer->forPersistence(
+                        $derecognition->metadata,
+                    ),
                     'treasury_position_operation_reference' => $derecognition->operationReference,
                     'treasury_position_reference' => $source->position_reference,
                     'treasury_operation_type' => TreasuryPositionOperationType::Derecognition->value,
@@ -521,7 +540,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     'source_transaction_id' => $transaction->getKey(),
                     'source_transaction_uuid' => $transaction->uuid,
                     'status' => 'committed',
-                    'metadata' => $derecognition->metadata,
+                    'metadata' => $this->metadataSanitizer->forPersistence(
+                        $derecognition->metadata,
+                    ),
                 ]));
             }, attempts: 5);
         } catch (UniqueConstraintViolationException $exception) {
@@ -627,7 +648,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     $destinationLedger,
                     $movement->amountMinor,
                     [
-                        ...$movement->metadata,
+                        ...$this->metadataSanitizer->forPersistence(
+                            $movement->metadata,
+                        ),
                         'treasury_position_operation_reference' => $movement->operationReference,
                         'treasury_source_position_reference' => $source->position_reference,
                         'treasury_destination_position_reference' => $destination->position_reference,
@@ -653,7 +676,9 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     'destination_transaction_id' => $transfer->deposit->getKey(),
                     'destination_transaction_uuid' => $transfer->deposit->uuid,
                     'status' => 'committed',
-                    'metadata' => $movement->metadata,
+                    'metadata' => $this->metadataSanitizer->forPersistence(
+                        $movement->metadata,
+                    ),
                 ]);
             }, attempts: 5);
         } catch (UniqueConstraintViolationException $exception) {

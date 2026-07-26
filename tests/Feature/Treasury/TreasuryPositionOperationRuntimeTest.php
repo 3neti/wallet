@@ -218,6 +218,13 @@ it('reserves releases and derecognizes Pay Code funds exactly once', function ()
         currency: 'PHP',
         idempotencyKey: 'position-reservation-key:pay-code:TEST-0001',
         externalReference: 'pay-code:TEST-0001',
+        metadata: [
+            'pay_code_id' => 42,
+            'pay_code' => 'FUND-SECRET',
+            'nested' => [
+                'inspection_token' => 'inspection-secret',
+            ],
+        ],
     );
     $release = new TreasuryPositionReleaseData(
         operationReference: 'position-release:pay-code:TEST-0001:partial',
@@ -251,7 +258,33 @@ it('reserves releases and derecognizes Pay Code funds exactly once', function ()
         ->and($secondDerecognition->toArray())->toBe($firstDerecognition->toArray())
         ->and($clientLedger->getBalanceIntAttribute())->toBe(40_00)
         ->and($reserveLedger->getBalanceIntAttribute())->toBe(0)
-        ->and(TreasuryPositionOperation::query()->count())->toBe(5);
+        ->and(TreasuryPositionOperation::query()->count())->toBe(5)
+        ->and(TreasuryPositionOperation::query()
+            ->where(
+                'operation_reference',
+                $reservation->operationReference,
+            )
+            ->sole()
+            ->metadata)
+        ->toBe([
+            'pay_code_id' => 42,
+            'nested' => [],
+        ])
+        ->and(Transaction::query()
+            ->whereIn('id', [
+                $firstReservation->sourceTransactionId,
+                $firstReservation->destinationTransactionId,
+            ])
+            ->get()
+            ->every(
+                static fn (Transaction $transaction): bool => ! str_contains(
+                    json_encode(
+                        $transaction->meta,
+                        JSON_THROW_ON_ERROR,
+                    ),
+                    'FUND-SECRET',
+                ),
+            ))->toBeTrue();
 });
 
 it('derecognizes legacy unattributed funds without permitting client funds write-downs', function () {

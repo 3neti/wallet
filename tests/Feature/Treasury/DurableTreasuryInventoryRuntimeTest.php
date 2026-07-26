@@ -86,6 +86,43 @@ it('recognizes provider-backed capacity exactly once', function () {
         ->and(TreasuryInventoryOperation::query()->count())->toBe(1);
 });
 
+it('keeps sensitive request metadata in the idempotency hash but out of durable inventory evidence', function () {
+    $runtime = app(TreasuryInventoryOperationContract::class);
+    registerTreasuryInventory(
+        $runtime,
+        'inventory:netbank:sanitized',
+        'resource:netbank:sanitized',
+    );
+    $request = new TreasuryInventoryRecognitionData(
+        operationReference: 'recognition:sanitized',
+        inventoryReference: 'inventory:netbank:sanitized',
+        settlementResourceReference: 'resource:netbank:sanitized',
+        amountMinor: 2500,
+        currency: 'PHP',
+        status: 'requested',
+        idempotencyKey: 'recognition-key:sanitized',
+        effectiveAt: '2026-07-26T12:00:00+08:00',
+        externalReference: 'provider-transaction:sanitized',
+        metadata: [
+            'pay_code_id' => 42,
+            'pay_code' => 'FUND-SECRET',
+        ],
+    );
+
+    $first = $runtime->recognize($request);
+    $second = $runtime->recognize($request);
+    $operation = TreasuryInventoryOperation::query()
+        ->where(
+            'operation_reference',
+            $request->operationReference,
+        )
+        ->sole();
+
+    expect($second->toArray())->toBe($first->toArray())
+        ->and($operation->metadata)->toBe(['pay_code_id' => 42])
+        ->and($operation->request_hash)->not->toBeEmpty();
+});
+
 it('keeps the Inventory registration response stable after later recognition', function () {
     $runtime = app(TreasuryInventoryOperationContract::class);
     $registration = registerTreasuryInventory($runtime, 'inventory:netbank:cash', 'resource:netbank:corporate');

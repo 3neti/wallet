@@ -33,6 +33,7 @@ use Bavix\Wallet\Internal\Transform\TransferDtoTransformer;
 use Bavix\Wallet\Models\Transaction;
 use Bavix\Wallet\Models\Transfer;
 use Bavix\Wallet\Models\Wallet;
+use Bavix\Wallet\Services;
 use Bavix\Wallet\Services\AssistantService;
 use Bavix\Wallet\Services\AtmService;
 use Bavix\Wallet\Services\AtomicService;
@@ -52,9 +53,18 @@ use Bavix\Wallet\Services\TransactionService;
 use Bavix\Wallet\Services\TransferService;
 use Bavix\Wallet\Services\WalletService;
 use LBHurtado\Wallet\Classes\BalanceUpdatedAssembler;
+use LBHurtado\Wallet\Enums\WalletType;
 use LBHurtado\Wallet\Events\BalanceUpdated;
 
 return [
+    'treasury' => [
+        'sensitive_metadata_keys' => [
+            'pay_code',
+            'raw_pay_code',
+            'inspection_token',
+        ],
+    ],
+
     /**
      * Arbitrary Precision Calculator.
      *
@@ -232,7 +242,7 @@ return [
      *
      * @var array<string, class-string>
      *
-     * @see \Bavix\Wallet\Services
+     * @see Services
      */
     'services' => [
         // Service for performing operations related to the assistant.
@@ -278,27 +288,27 @@ return [
      *
      * Each repository is responsible for fetching data from the database for a specific entity.
      *
-     * @see \Bavix\Wallet\Interfaces\Wallet
-     * @see \Bavix\Wallet\Interfaces\Transaction
-     * @see \Bavix\Wallet\Interfaces\Transfer
+     * @see Bavix\Wallet\Interfaces\Wallet
+     * @see Bavix\Wallet\Interfaces\Transaction
+     * @see Bavix\Wallet\Interfaces\Transfer
      */
     'repositories' => [
         /**
          * Repository for fetching transaction data.
          *
-         * @see \Bavix\Wallet\Interfaces\Transaction
+         * @see Bavix\Wallet\Interfaces\Transaction
          */
         'transaction' => TransactionRepository::class,
         /**
          * Repository for fetching transfer data.
          *
-         * @see \Bavix\Wallet\Interfaces\Transfer
+         * @see Bavix\Wallet\Interfaces\Transfer
          */
         'transfer' => TransferRepository::class,
         /**
          * Repository for fetching wallet data.
          *
-         * @see \Bavix\Wallet\Interfaces\Wallet
+         * @see Bavix\Wallet\Interfaces\Wallet
          */
         'wallet' => WalletRepository::class,
     ],
@@ -490,14 +500,14 @@ return [
              *
              * @var string
              */
-            'name' => env('WALLET_DEFAULT_WALLET_NAME', \LBHurtado\Wallet\Enums\WalletType::default()->label()),
+            'name' => env('WALLET_DEFAULT_WALLET_NAME', WalletType::default()->label()),
 
             /**
              * The slug of the default wallet.
              *
              * @var string
              */
-            'slug' => env('WALLET_DEFAULT_WALLET_SLUG', \LBHurtado\Wallet\Enums\WalletType::default()->value),
+            'slug' => env('WALLET_DEFAULT_WALLET_SLUG', WalletType::default()->value),
 
             /**
              * The meta information of the default wallet.
