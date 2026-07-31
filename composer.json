@@ -40,7 +40,7 @@
         "pestphp/pest": "^3.8 || ^4.0"
     },
     "scripts": {
-        "test": "vendor/bin/pest --compact --do-not-cache-result"
+        "test": "vendor/bin/pest --compact"
     },
     "config": {
         "allow-plugins": {
