@@ -1,194 +1,187 @@
 # 3neti/wallet
 
-A lightweight helper package that extends and standardizes usage of **Bavix Laravel Wallet** within the x-change ecosystem.
+`3neti/wallet` is the provider-neutral value-accounting and Treasury position
+layer used by x-change. It extends
+[Bavix Laravel Wallet](https://github.com/bavix/laravel-wallet) with explicit
+system-principal resolution, durable Treasury Inventory, principal Positions,
+and append-only recognition, reservation, release, allocation, reversal, and
+derecognition operations.
 
----
+The package records internal financial attribution. It does not call banks,
+EMIs, payout providers, or webhook endpoints.
 
-## 🧭 Overview
+## Supported platforms
 
-`3neti/wallet` is **not a wallet implementation**.
+- PHP 8.3 and 8.4
+- Laravel 12 and 13
+- Bavix Laravel Wallet 11
 
-Instead, it provides:
+Laravel 12 and Laravel 13 are tested as separate compatibility lanes.
 
-- Configuration standardization
-- System user handling
-- Integration glue for x-change services (voucher, cash, settlement)
-- Test scaffolding for wallet-based flows
-
-It builds on top of:
-
-- `bavix/laravel-wallet`
-
----
-
-## 🧠 Design Philosophy
-
-> This package does NOT own the wallet schema.
-
-All database tables (wallets, transactions, transfers) are owned by:
-
-- `bavix/laravel-wallet`
-
-This package focuses on:
-
-- orchestration
-- consistency
-- extensibility
-
----
-
-## 📦 Installation
+## Installation
 
 ```bash
-composer require 3neti/wallet
+composer require 3neti/wallet:^2.0@beta
+php artisan migrate
 ```
 
----
+Laravel package discovery registers
+`LBHurtado\Wallet\WalletServiceProvider`. The provider loads the package-owned
+Treasury migrations and the Bavix provider continues to own its wallet,
+transaction, and transfer migrations.
 
-## ⚙️ Configuration
-
-Publish config files:
+Publish configuration only when the application needs to override the package
+defaults:
 
 ```bash
-php artisan vendor:publish --tag=config
+php artisan vendor:publish --provider="LBHurtado\Wallet\WalletServiceProvider" --tag=config
 ```
 
-### Files
+Published files:
 
-- `config/wallet.php`
 - `config/account.php`
+- `config/wallet.php`
 
----
+## Schema ownership
 
-## 👤 System User
+The package owns these Treasury tables:
 
-The package introduces a **system user abstraction**.
+- `treasury_settlement_resources`
+- `treasury_inventories`
+- `treasury_inventory_operations`
+- `treasury_positions`
+- `treasury_position_operations`
 
-### Config
+The migrations are additive. Applications must run `php artisan migrate` after
+installing or upgrading the package. Do not copy or rename package migrations
+inside the host application.
+
+Bavix continues to own the underlying wallet ledgers, transactions, and
+transfers. Treasury records reference those ledgers without exposing internal
+wallet identifiers through the package read models.
+
+## Accounting model
+
+```text
+Provider evidence
+      │
+      ▼
+Treasury Inventory
+      │
+      ├── Client Funds
+      ├── Pay Code Reserve
+      ├── Account Funding Reserve
+      ├── Provider Cost
+      ├── Product Revenue
+      ├── Partner Commission
+      └── Commercial Revenue
+```
+
+- **Inventory** is recognized provider value available to the settlement
+  system.
+- **Positions** attribute that Inventory to a principal, purpose, provider
+  connection, and currency.
+- **Operations** are append-only and idempotent.
+- **Planning contracts** are non-mutating. Their default runtimes fail closed
+  by returning no executable plan.
+- **Read models** omit internal Bavix ledger identifiers.
+
+The integrating settlement package remains responsible for authenticating
+provider evidence, enforcing authorization, and deciding when an operation is
+permitted. `3neti/wallet` records the resulting accounting operation; it does
+not manufacture settlement authority.
+
+## System principal
+
+Applications should resolve their system principal through
+`SystemUserResolverContract`:
 
 ```php
-'account' => [
-    'system_user' => [
-        'identifier' => env('SYSTEM_USER_ID', 'system@example.com'),
-        'identifier_column' => 'email',
-        'model' => App\Models\User::class,
-    ],
-]
+use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
+
+$systemPrincipal = app(SystemUserResolverContract::class)->resolve();
 ```
 
-### Purpose
-
-- acts as source of funds
-- supports top-ups, disbursements, internal transfers
-
----
-
-## 🔄 Integration Role in x-change
-
-```text
-Voucher → Cash → Wallet → Settlement
-```
-
-Wallet is responsible for:
-
-- balance tracking
-- transfers
-- transaction recording
-
----
-
-## 🧪 Testing Strategy
-
-This package:
-
-- does NOT ship migrations
-- uses **dependency migrations** from Bavix
-
-### Test Setup
-
-- loads:
-  - test user migration
-  - Bavix wallet migrations dynamically
-
-### Key Principle
-
-```text
-Ownership != Dependency
-```
-
-- Bavix owns schema
-- Wallet package depends on it
-
----
-
-## 🏗️ Service Provider
+The legacy single-candidate configuration remains available:
 
 ```php
-LBHurtado\Wallet\WalletServiceProvider
+'system_user' => [
+    'model' => App\Models\User::class,
+    'identifier_column' => 'email',
+    'identifier' => env('SYSTEM_USER_ID'),
+    'candidates' => [],
+],
 ```
 
-### Responsibilities
+An integrating package may supply multiple named `candidates` that all identify
+the same principal. Resolution fails closed when candidates disagree, a model
+does not implement the Bavix Wallet contract, an identifier column is unsafe,
+or no principal is found.
 
-- merge configs
-- register event provider
-- expose configuration
+Resolve the contract through Laravel's container. Direct construction of
+`SystemUserResolverService` and actions that consume it is not part of the 2.x
+public API.
 
----
+## Runtime contracts
 
-## 🔌 Dependencies
+The service provider binds contracts for:
 
-- `bavix/laravel-wallet`
-- `spatie/laravel-data`
-- `lorisleiva/laravel-actions`
-- `brick/money`
+- Treasury Inventory reads and operations;
+- Treasury Position provisioning, reads, and operations;
+- Inventory-to-Position portfolio reads;
+- commercial allocation reads;
+- Treasury planning;
+- operation planning; and
+- sensitive metadata sanitization.
 
----
+Provider packages should implement or decorate these contracts rather than add
+provider-specific behavior to this package.
 
-## ⚠️ Important Notes
+## Security boundaries
 
-### ❌ Do NOT:
+- Amounts are persisted in integer minor units.
+- Inventory and Position mutations are append-only and idempotent.
+- Conflicting reuse of an operation reference fails closed.
+- Metadata keys configured in
+  `wallet.treasury.sensitive_metadata_keys` are recursively redacted before
+  persistence.
+- Provider credentials, raw provider responses, Pay Codes, and inspection
+  tokens must not be stored in Treasury metadata.
+- Top-up helpers transfer existing value from the resolved system principal;
+  they do not create provider value.
 
-- copy Bavix migrations into this package
-- publish Bavix migrations from here
-- override wallet tables
+## Upgrade from 1.x
 
-### ✅ DO:
+Version 2 is a deliberate major-version boundary.
 
-- treat wallet as infrastructure
-- extend behavior via services/actions
-- keep this package stateless
+Before upgrading:
 
----
+1. update every direct consumer to accept `3neti/wallet:^2.0@beta`;
+2. remove direct construction of `SystemUserResolverService` and
+   `TopupWalletAction`;
+3. resolve their contracts or actions through Laravel's container;
+4. review the configured system-principal candidates;
+5. run the package migrations; and
+6. reconcile Treasury Inventory and Positions before enabling issuance.
 
-## 🧠 Architectural Role
+Do not infer opening Inventory from a Bavix balance. Opening recognition must
+come from an authorized, provider-backed reconciliation workflow owned by the
+integrating settlement system.
 
-This package is part of the **financial core layer**:
+## Testing
 
-```text
-[Contact] → [Voucher] → [Cash] → [Wallet] → [Settlement]
+```bash
+composer install
+composer test
 ```
 
-Wallet sits at:
+The package suite covers legacy Bavix wallet behavior, system-principal
+resolution, Treasury DTOs and contracts, durable Inventory and Position
+operations, commercial waterfall positions, idempotency, reversals, and
+metadata sanitization.
 
-👉 **value storage + transfer layer**
-
----
-
-## 🚀 Future Extensions
-
-- multi-account support
-- audit enhancements
-- event-driven hooks
-- reconciliation support
-
----
-
-## 🧠 Final Thought
-
-> This package does not implement wallets.  
-> It ensures wallets behave correctly within x-change.
-
----
+CI runs the suite against every supported Laravel generation. A release tag is
+created only after downstream clean-consumer tests pass.
 
 ## License
 
