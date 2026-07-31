@@ -4,4 +4,5 @@ composer.lock
 .php_cs.cache
 .idea/
 .vscode/
+.DS_Store
 *.log
