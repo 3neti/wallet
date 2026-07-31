@@ -1,0 +1,65 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel-label }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: "8.3"
+            laravel-label: "12"
+            laravel: "^12.0"
+            testbench: "^10.3"
+            pest: "^3.8"
+          - php: "8.4"
+            laravel-label: "12"
+            laravel: "^12.0"
+            testbench: "^10.3"
+            pest: "^3.8"
+          - php: "8.3"
+            laravel-label: "13"
+            laravel: "^13.9"
+            testbench: "^11.0"
+            pest: "^4.0"
+          - php: "8.4"
+            laravel-label: "13"
+            laravel: "^13.9"
+            testbench: "^11.0"
+            pest: "^4.0"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Validate Composer manifest
+        run: composer validate --strict --no-check-lock
+
+      - name: Install compatibility lane
+        run: >
+          composer update
+          --prefer-dist
+          --no-interaction
+          --no-progress
+          --with="laravel/framework:${{ matrix.laravel }}"
+          --with="orchestra/testbench:${{ matrix.testbench }}"
+          --with="pestphp/pest:${{ matrix.pest }}"
+
+      - name: Run package tests
+        run: composer test

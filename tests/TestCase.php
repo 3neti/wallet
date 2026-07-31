@@ -2,14 +2,21 @@
 
 namespace LBHurtado\Wallet\Tests;
 
+use Dotenv\Dotenv;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use LBHurtado\Wallet\Tests\Models\User;
+use LBHurtado\Wallet\WalletServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
+use Spatie\LaravelData\Normalizers\ArrayableNormalizer;
+use Spatie\LaravelData\Normalizers\ArrayNormalizer;
+use Spatie\LaravelData\Normalizers\JsonNormalizer;
+use Spatie\LaravelData\Normalizers\ModelNormalizer;
+use Spatie\LaravelData\Normalizers\ObjectNormalizer;
 
 abstract class TestCase extends BaseTestCase
 {
-    use RefreshDatabase;
+    use LazilyRefreshDatabase;
 
     protected function setUp(): void
     {
@@ -31,7 +38,7 @@ abstract class TestCase extends BaseTestCase
     protected function getPackageProviders($app): array
     {
         return [
-            \LBHurtado\Wallet\WalletServiceProvider::class,
+            WalletServiceProvider::class,
             \Bavix\Wallet\WalletServiceProvider::class,
         ];
     }
@@ -44,11 +51,11 @@ abstract class TestCase extends BaseTestCase
         $app['config']->set('data.max_transformation_depth', 6);
         $app['config']->set('data.throw_when_max_transformation_depth_reached', 6);
         $app['config']->set('data.normalizers', [
-            \Spatie\LaravelData\Normalizers\ModelNormalizer::class,
-            \Spatie\LaravelData\Normalizers\ArrayableNormalizer::class,
-            \Spatie\LaravelData\Normalizers\ObjectNormalizer::class,
-            \Spatie\LaravelData\Normalizers\ArrayNormalizer::class,
-            \Spatie\LaravelData\Normalizers\JsonNormalizer::class,
+            ModelNormalizer::class,
+            ArrayableNormalizer::class,
+            ObjectNormalizer::class,
+            ArrayNormalizer::class,
+            JsonNormalizer::class,
         ]);
 
         $app['config']->set('auth.defaults.guard', 'web');
@@ -96,7 +103,7 @@ abstract class TestCase extends BaseTestCase
         $path = __DIR__.'/../.env';
 
         if (file_exists($path)) {
-            \Dotenv\Dotenv::createImmutable(dirname($path), '.env')->load();
+            Dotenv::createImmutable(dirname($path), '.env')->load();
         }
     }
 
@@ -104,7 +111,7 @@ abstract class TestCase extends BaseTestCase
     {
         $reflection = new \ReflectionClass(\Bavix\Wallet\WalletServiceProvider::class);
 
-        $path = dirname($reflection->getFileName(), 2) . '/database';
+        $path = dirname($reflection->getFileName(), 2).'/database';
 
         if (! is_dir($path)) {
             throw new \RuntimeException('Unable to locate Bavix wallet migrations.');
