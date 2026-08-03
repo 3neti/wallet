@@ -8,6 +8,7 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReservationData;
@@ -45,4 +46,8 @@ interface TreasuryPositionOperationContract
     public function derecognize(
         TreasuryPositionDerecognitionData $derecognition,
     ): TreasuryPositionDerecognitionData;
+
+    public function settlePayable(
+        TreasuryPositionPayableSettlementData $settlement,
+    ): TreasuryPositionPayableSettlementData;
 }

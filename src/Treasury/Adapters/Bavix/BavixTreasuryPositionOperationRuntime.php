@@ -15,6 +15,7 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReservationData;
@@ -557,6 +558,101 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             }
 
             return $this->derecognitionData($existing);
+        }
+    }
+
+    public function settlePayable(
+        TreasuryPositionPayableSettlementData $settlement,
+    ): TreasuryPositionPayableSettlementData {
+        $this->assertRequest(
+            $settlement->operationReference,
+            $settlement->idempotencyKey,
+            $settlement->amountMinor,
+            $settlement->currency,
+            $settlement->externalReference,
+        );
+        $requestHash = $this->requestHash(
+            TreasuryPositionOperationType::PayableSettlement,
+            $settlement->toArray(),
+        );
+        $existing = $this->existing(
+            $settlement->idempotencyKey,
+            $requestHash,
+            TreasuryPositionOperationType::PayableSettlement,
+        );
+
+        if ($existing !== null) {
+            return $this->payableSettlementData($existing);
+        }
+
+        try {
+            return DB::transaction(function () use ($settlement, $requestHash): TreasuryPositionPayableSettlementData {
+                $source = $this->lockedPosition(
+                    $settlement->sourcePositionReference,
+                );
+                $existing = $this->existing(
+                    $settlement->idempotencyKey,
+                    $requestHash,
+                    TreasuryPositionOperationType::PayableSettlement,
+                    true,
+                );
+
+                if ($existing !== null) {
+                    return $this->payableSettlementData($existing);
+                }
+
+                $this->assertPositionPurpose(
+                    $source,
+                    [
+                        TreasuryPositionPurpose::ProviderCostPayable,
+                        TreasuryPositionPurpose::PartnerCommissionPayable,
+                        TreasuryPositionPurpose::RoyaltyPayable,
+                        TreasuryPositionPurpose::TaxPayable,
+                    ],
+                    $settlement->currency,
+                );
+                $this->assertOperationReferenceAvailable(
+                    $settlement->operationReference,
+                );
+                $ledger = $this->lockedLedger((int) $source->internal_ledger_id);
+                $transaction = $ledger->withdraw($settlement->amountMinor, [
+                    ...$this->metadataSanitizer->forPersistence(
+                        $settlement->metadata,
+                    ),
+                    'treasury_position_operation_reference' => $settlement->operationReference,
+                    'treasury_position_reference' => $source->position_reference,
+                    'treasury_operation_type' => TreasuryPositionOperationType::PayableSettlement->value,
+                ], true);
+
+                return $this->payableSettlementData(TreasuryPositionOperation::query()->create([
+                    'operation_reference' => $settlement->operationReference,
+                    'idempotency_key' => $settlement->idempotencyKey,
+                    'request_hash' => $requestHash,
+                    'operation_type' => TreasuryPositionOperationType::PayableSettlement,
+                    'source_position_id' => $source->getKey(),
+                    'amount_minor' => $settlement->amountMinor,
+                    'currency' => $settlement->currency,
+                    'external_reference' => $settlement->externalReference,
+                    'source_transaction_id' => $transaction->getKey(),
+                    'source_transaction_uuid' => $transaction->uuid,
+                    'status' => 'committed',
+                    'metadata' => $this->metadataSanitizer->forPersistence(
+                        $settlement->metadata,
+                    ),
+                ]));
+            }, attempts: 5);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = $this->existing(
+                $settlement->idempotencyKey,
+                $requestHash,
+                TreasuryPositionOperationType::PayableSettlement,
+            );
+
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $this->payableSettlementData($existing);
         }
     }
 
@@ -1105,6 +1201,24 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         $operation->loadMissing('sourcePosition');
 
         return new TreasuryPositionDerecognitionData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function payableSettlementData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionPayableSettlementData {
+        $operation->loadMissing('sourcePosition');
+
+        return new TreasuryPositionPayableSettlementData(
             operationReference: $operation->operation_reference,
             sourcePositionReference: $operation->sourcePosition->position_reference,
             amountMinor: $operation->amount_minor,

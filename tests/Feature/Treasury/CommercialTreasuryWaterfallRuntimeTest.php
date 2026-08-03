@@ -10,6 +10,7 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDefinitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryCustodyMode;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionPurpose;
@@ -200,6 +201,57 @@ it('rejects commercial allocations that target client funds or cross settlement 
     )))->toThrow(TreasuryInvariantViolation::class, 'not eligible');
 });
 
+it('settles an externally evidenced commercial payable exactly once', function () {
+    $positions = commercialWaterfallPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+    seedCommercialWaterfallPayable($runtime, $positions, 10_00);
+    $settlement = new TreasuryPositionPayableSettlementData(
+        operationReference: 'commercial-payable-settlement:provider-invoice-1',
+        sourcePositionReference: $positions['provider_cost']->position_reference,
+        amountMinor: 7_00,
+        currency: 'PHP',
+        idempotencyKey: 'commercial-payable-settlement:provider-invoice-1:key',
+        externalReference: 'provider-invoice:netbank:2026-08-001',
+        metadata: ['evidence_type' => 'provider_invoice'],
+    );
+
+    $first = $runtime->settlePayable($settlement);
+    $replay = $runtime->settlePayable($settlement);
+
+    expect($replay->toArray())->toBe($first->toArray())
+        ->and(commercialPositionBalance($positions['provider_cost']))->toBe(3_00)
+        ->and(TreasuryPositionOperation::query()
+            ->where('operation_type', 'payable_settlement')
+            ->count())->toBe(1)
+        ->and(fn () => $runtime->settlePayable(
+            new TreasuryPositionPayableSettlementData(
+                operationReference: 'commercial-payable-settlement:provider-invoice-changed',
+                sourcePositionReference: $positions['provider_cost']->position_reference,
+                amountMinor: 6_00,
+                currency: 'PHP',
+                idempotencyKey: 'commercial-payable-settlement:provider-invoice-1:key',
+                externalReference: 'provider-invoice:netbank:2026-08-001',
+            ),
+        ))->toThrow(TreasuryOperationConflict::class, 'different input');
+});
+
+it('refuses to settle earned revenue through the payable operation', function () {
+    $positions = commercialWaterfallPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+    seedCommercialWaterfallPayable($runtime, $positions, 10_00);
+
+    expect(fn () => $runtime->settlePayable(
+        new TreasuryPositionPayableSettlementData(
+            operationReference: 'commercial-payable-settlement:invalid-revenue',
+            sourcePositionReference: $positions['product_revenue']->position_reference,
+            amountMinor: 1_00,
+            currency: 'PHP',
+            idempotencyKey: 'commercial-payable-settlement:invalid-revenue:key',
+            externalReference: 'provider-invoice:invalid',
+        ),
+    ))->toThrow(TreasuryInvariantViolation::class, 'not eligible');
+});
+
 /**
  * @return array<string, TreasuryPosition>
  */
@@ -263,4 +315,49 @@ function commercialPositionBalance(TreasuryPosition $position): int
     return Wallet::query()
         ->findOrFail($position->internal_ledger_id)
         ->getBalanceIntAttribute();
+}
+
+/**
+ * @param  array<string, TreasuryPosition>  $positions
+ */
+function seedCommercialWaterfallPayable(
+    TreasuryPositionOperationContract $runtime,
+    array $positions,
+    int $amountMinor,
+): void {
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'commercial-payable-test:recognition',
+        destinationPositionReference: $positions['treasury_clearing']->position_reference,
+        amountMinor: $amountMinor,
+        currency: 'PHP',
+        idempotencyKey: 'commercial-payable-test:recognition:key',
+        externalReference: 'provider-observation:commercial-payable-test',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'commercial-payable-test:fund-client',
+        sourcePositionReference: $positions['treasury_clearing']->position_reference,
+        destinationPositionReference: $positions['client_funds']->position_reference,
+        amountMinor: $amountMinor,
+        currency: 'PHP',
+        idempotencyKey: 'commercial-payable-test:fund-client:key',
+        externalReference: 'commercial-payable-test:recognition',
+    ));
+    $runtime->charge(new TreasuryPositionCommercialChargeData(
+        operationReference: 'commercial-payable-test:charge',
+        sourcePositionReference: $positions['client_funds']->position_reference,
+        destinationPositionReference: $positions['commercial_clearing']->position_reference,
+        amountMinor: $amountMinor,
+        currency: 'PHP',
+        idempotencyKey: 'commercial-payable-test:charge:key',
+        externalReference: 'commercial-sale:PAYABLE-TEST',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'commercial-payable-test:provider-allocation',
+        sourcePositionReference: $positions['commercial_clearing']->position_reference,
+        destinationPositionReference: $positions['provider_cost']->position_reference,
+        amountMinor: $amountMinor,
+        currency: 'PHP',
+        idempotencyKey: 'commercial-payable-test:provider-allocation:key',
+        externalReference: 'commercial-sale:PAYABLE-TEST',
+    ));
 }
