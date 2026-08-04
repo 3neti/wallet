@@ -16,6 +16,7 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayableSettlementData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayoutRecoveryData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReservationData;
@@ -468,6 +469,28 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         ));
     }
 
+    public function holdPayoutRecovery(
+        TreasuryPositionPayoutRecoveryData $recovery,
+    ): TreasuryPositionPayoutRecoveryData {
+        return $this->payoutRecoveryData($this->transferPositionBalance(
+            movement: $recovery,
+            type: TreasuryPositionOperationType::PayoutRecoveryHold,
+            sourcePurpose: TreasuryPositionPurpose::PayCodeReserve,
+            destinationPurpose: TreasuryPositionPurpose::BeneficiaryPayoutPayable,
+        ));
+    }
+
+    public function releasePayoutRecovery(
+        TreasuryPositionPayoutRecoveryData $recovery,
+    ): TreasuryPositionPayoutRecoveryData {
+        return $this->payoutRecoveryData($this->transferPositionBalance(
+            movement: $recovery,
+            type: TreasuryPositionOperationType::PayoutRecoveryRelease,
+            sourcePurpose: TreasuryPositionPurpose::BeneficiaryPayoutPayable,
+            destinationPurpose: TreasuryPositionPurpose::ClientFunds,
+        ));
+    }
+
     public function derecognize(
         TreasuryPositionDerecognitionData $derecognition,
     ): TreasuryPositionDerecognitionData {
@@ -512,6 +535,7 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                     $source,
                     [
                         TreasuryPositionPurpose::PayCodeReserve,
+                        TreasuryPositionPurpose::BeneficiaryPayoutPayable,
                         TreasuryPositionPurpose::LegacyUnattributed,
                     ],
                     $derecognition->currency,
@@ -657,7 +681,7 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
     }
 
     private function transferPositionBalance(
-        TreasuryPositionReservationData|TreasuryPositionReleaseData|TreasuryPositionCommercialChargeData $movement,
+        TreasuryPositionReservationData|TreasuryPositionReleaseData|TreasuryPositionCommercialChargeData|TreasuryPositionPayoutRecoveryData $movement,
         TreasuryPositionOperationType $type,
         TreasuryPositionPurpose $sourcePurpose,
         TreasuryPositionPurpose $destinationPurpose,
@@ -1178,6 +1202,29 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         $operation->loadMissing(['sourcePosition', 'destinationPosition']);
 
         return new TreasuryPositionReleaseData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            destinationPositionReference: $operation->destinationPosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            transferId: $operation->transfer_id,
+            transferUuid: $operation->transfer_uuid,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            destinationTransactionId: $operation->destination_transaction_id,
+            destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function payoutRecoveryData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionPayoutRecoveryData {
+        $operation->loadMissing(['sourcePosition', 'destinationPosition']);
+
+        return new TreasuryPositionPayoutRecoveryData(
             operationReference: $operation->operation_reference,
             sourcePositionReference: $operation->sourcePosition->position_reference,
             destinationPositionReference: $operation->destinationPosition->position_reference,

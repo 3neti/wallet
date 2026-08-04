@@ -12,10 +12,12 @@ use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDefinitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayoutRecoveryData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReleaseData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionReservationData;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryCustodyMode;
+use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionOperationType;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionPurpose;
 use LBHurtado\Wallet\Treasury\Exceptions\TreasuryInvariantViolation;
 use LBHurtado\Wallet\Treasury\Exceptions\TreasuryOperationConflict;
@@ -285,6 +287,174 @@ it('reserves releases and derecognizes Pay Code funds exactly once', function ()
                     'FUND-SECRET',
                 ),
             ))->toBeTrue();
+});
+
+it('holds rejected payout principal and releases it exactly once', function () {
+    [$clearing, $client] = treasuryOperationPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $provisioning = app(TreasuryPositionProvisioningContract::class);
+    $principal = $client->principal;
+    $reserveData = $provisioning->provision(
+        $principal,
+        treasuryOperationPositionDefinition(
+            principal: $principal,
+            purpose: TreasuryPositionPurpose::PayCodeReserve,
+        ),
+    );
+    $payableData = $provisioning->provision(
+        $principal,
+        treasuryOperationPositionDefinition(
+            principal: $principal,
+            purpose: TreasuryPositionPurpose::BeneficiaryPayoutPayable,
+        ),
+    );
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'position-recognition:provider:payout-recovery',
+        destinationPositionReference: $clearing->position_reference,
+        amountMinor: 10_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-recognition-key:provider:payout-recovery',
+        externalReference: 'netbank:payout-recovery',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'position-allocation:provider:payout-recovery',
+        sourcePositionReference: $clearing->position_reference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 10_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-allocation-key:provider:payout-recovery',
+        externalReference: 'position-recognition:provider:payout-recovery',
+    ));
+    $runtime->reserve(new TreasuryPositionReservationData(
+        operationReference: 'position-reservation:pay-code:RECOVERY-1',
+        sourcePositionReference: $client->position_reference,
+        destinationPositionReference: $reserveData->positionReference,
+        amountMinor: 10_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-reservation-key:pay-code:RECOVERY-1',
+        externalReference: 'pay-code:RECOVERY-1',
+    ));
+    $hold = new TreasuryPositionPayoutRecoveryData(
+        operationReference: 'payout-recovery-hold:pay-code:RECOVERY-1',
+        sourcePositionReference: $reserveData->positionReference,
+        destinationPositionReference: $payableData->positionReference,
+        amountMinor: 10_00,
+        currency: 'PHP',
+        idempotencyKey: 'payout-recovery-hold-key:pay-code:RECOVERY-1',
+        externalReference: 'netbank:rejected:RECOVERY-1',
+    );
+    $release = new TreasuryPositionPayoutRecoveryData(
+        operationReference: 'payout-recovery-release:pay-code:RECOVERY-1',
+        sourcePositionReference: $payableData->positionReference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 10_00,
+        currency: 'PHP',
+        idempotencyKey: 'payout-recovery-release-key:pay-code:RECOVERY-1',
+        externalReference: 'authorization:return:RECOVERY-1',
+    );
+
+    $firstHold = $runtime->holdPayoutRecovery($hold);
+    $secondHold = $runtime->holdPayoutRecovery($hold);
+    $firstRelease = $runtime->releasePayoutRecovery($release);
+    $secondRelease = $runtime->releasePayoutRecovery($release);
+    $clientLedger = Wallet::query()->findOrFail($client->internal_ledger_id);
+    $reserveLedger = Wallet::query()->findOrFail(
+        TreasuryPosition::query()
+            ->where('position_reference', $reserveData->positionReference)
+            ->value('internal_ledger_id'),
+    );
+    $payableLedger = Wallet::query()->findOrFail(
+        TreasuryPosition::query()
+            ->where('position_reference', $payableData->positionReference)
+            ->value('internal_ledger_id'),
+    );
+
+    expect($secondHold->toArray())->toBe($firstHold->toArray())
+        ->and($secondRelease->toArray())->toBe($firstRelease->toArray())
+        ->and($clientLedger->getBalanceIntAttribute())->toBe(10_00)
+        ->and($reserveLedger->getBalanceIntAttribute())->toBe(0)
+        ->and($payableLedger->getBalanceIntAttribute())->toBe(0)
+        ->and(TreasuryPositionOperation::query()
+            ->where('operation_type', TreasuryPositionOperationType::PayoutRecoveryHold)
+            ->count())->toBe(1)
+        ->and(TreasuryPositionOperation::query()
+            ->where('operation_type', TreasuryPositionOperationType::PayoutRecoveryRelease)
+            ->count())->toBe(1);
+});
+
+it('derecognizes rejected payout principal only from its beneficiary payable', function () {
+    [$clearing, $client] = treasuryOperationPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $provisioning = app(TreasuryPositionProvisioningContract::class);
+    $principal = $client->principal;
+    $reserveData = $provisioning->provision(
+        $principal,
+        treasuryOperationPositionDefinition(
+            principal: $principal,
+            purpose: TreasuryPositionPurpose::PayCodeReserve,
+        ),
+    );
+    $payableData = $provisioning->provision(
+        $principal,
+        treasuryOperationPositionDefinition(
+            principal: $principal,
+            purpose: TreasuryPositionPurpose::BeneficiaryPayoutPayable,
+        ),
+    );
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'position-recognition:provider:payout-retry',
+        destinationPositionReference: $clearing->position_reference,
+        amountMinor: 12_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-recognition-key:provider:payout-retry',
+        externalReference: 'netbank:payout-retry',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'position-allocation:provider:payout-retry',
+        sourcePositionReference: $clearing->position_reference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 12_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-allocation-key:provider:payout-retry',
+        externalReference: 'position-recognition:provider:payout-retry',
+    ));
+    $runtime->reserve(new TreasuryPositionReservationData(
+        operationReference: 'position-reservation:pay-code:RECOVERY-2',
+        sourcePositionReference: $client->position_reference,
+        destinationPositionReference: $reserveData->positionReference,
+        amountMinor: 12_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-reservation-key:pay-code:RECOVERY-2',
+        externalReference: 'pay-code:RECOVERY-2',
+    ));
+    $runtime->holdPayoutRecovery(new TreasuryPositionPayoutRecoveryData(
+        operationReference: 'payout-recovery-hold:pay-code:RECOVERY-2',
+        sourcePositionReference: $reserveData->positionReference,
+        destinationPositionReference: $payableData->positionReference,
+        amountMinor: 12_00,
+        currency: 'PHP',
+        idempotencyKey: 'payout-recovery-hold-key:pay-code:RECOVERY-2',
+        externalReference: 'netbank:rejected:RECOVERY-2',
+    ));
+    $derecognition = new TreasuryPositionDerecognitionData(
+        operationReference: 'position-derecognition:payout-recovery:RECOVERY-2',
+        sourcePositionReference: $payableData->positionReference,
+        amountMinor: 12_00,
+        currency: 'PHP',
+        idempotencyKey: 'position-derecognition-key:payout-recovery:RECOVERY-2',
+        externalReference: 'netbank:settled:RECOVERY-2-R1',
+    );
+
+    $first = $runtime->derecognize($derecognition);
+    $second = $runtime->derecognize($derecognition);
+    $payableLedger = Wallet::query()->findOrFail(
+        TreasuryPosition::query()
+            ->where('position_reference', $payableData->positionReference)
+            ->value('internal_ledger_id'),
+    );
+
+    expect($second->toArray())->toBe($first->toArray())
+        ->and($payableLedger->getBalanceIntAttribute())->toBe(0);
 });
 
 it('derecognizes legacy unattributed funds without permitting client funds write-downs', function () {

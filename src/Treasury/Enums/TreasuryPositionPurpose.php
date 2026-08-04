@@ -10,6 +10,7 @@ enum TreasuryPositionPurpose: string
     case AccountFundingReserve = 'account_funding_reserve';
     case ClientFunds = 'client_funds';
     case PayCodeReserve = 'pay_code_reserve';
+    case BeneficiaryPayoutPayable = 'beneficiary_payout_payable';
     case LegacyUnattributed = 'legacy_unattributed';
     case CommercialClearing = 'commercial_clearing';
     case ProviderCostPayable = 'provider_cost_payable';
@@ -26,6 +27,7 @@ enum TreasuryPositionPurpose: string
             self::AccountFundingReserve => 'Account Funding Reserve Position',
             self::ClientFunds => 'Client Funds Position',
             self::PayCodeReserve => 'Pay Code Reserve Position',
+            self::BeneficiaryPayoutPayable => 'Beneficiary Payout Payable Position',
             self::LegacyUnattributed => 'Legacy Unattributed Position',
             self::CommercialClearing => 'Commercial Waterfall Clearing Position',
             self::ProviderCostPayable => 'Provider Cost Payable Position',

@@ -10,6 +10,8 @@ enum TreasuryPositionOperationType: string
     case Allocation = 'allocation';
     case Reservation = 'reservation';
     case Release = 'release';
+    case PayoutRecoveryHold = 'payout_recovery_hold';
+    case PayoutRecoveryRelease = 'payout_recovery_release';
     case Derecognition = 'derecognition';
     case CommercialCharge = 'commercial_charge';
     case CommercialReversal = 'commercial_reversal';
