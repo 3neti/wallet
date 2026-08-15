@@ -187,6 +187,12 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                         $this->commercialDestinationPurposes(),
                         $allocation->currency,
                     );
+                } elseif ($source->purpose === TreasuryPositionPurpose::InstitutionOwnedFunds) {
+                    $this->assertPositionPurpose(
+                        $destination,
+                        [TreasuryPositionPurpose::ClientFunds],
+                        $allocation->currency,
+                    );
                 } else {
                     $this->assertPositionPurpose(
                         $source,
@@ -201,6 +207,7 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
                         [
                             TreasuryPositionPurpose::ClientFunds,
                             TreasuryPositionPurpose::AccountFundingReserve,
+                            TreasuryPositionPurpose::InstitutionOwnedFunds,
                         ],
                         $allocation->currency,
                     );

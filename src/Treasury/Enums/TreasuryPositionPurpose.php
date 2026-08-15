@@ -7,6 +7,7 @@ namespace LBHurtado\Wallet\Treasury\Enums;
 enum TreasuryPositionPurpose: string
 {
     case TreasuryClearing = 'treasury_clearing';
+    case InstitutionOwnedFunds = 'institution_owned_funds';
     case AccountFundingReserve = 'account_funding_reserve';
     case ClientFunds = 'client_funds';
     case PayCodeReserve = 'pay_code_reserve';
@@ -24,6 +25,7 @@ enum TreasuryPositionPurpose: string
     {
         return match ($this) {
             self::TreasuryClearing => 'Treasury Clearing Position',
+            self::InstitutionOwnedFunds => 'Institution-Owned Funds Position',
             self::AccountFundingReserve => 'Account Funding Reserve Position',
             self::ClientFunds => 'Client Funds Position',
             self::PayCodeReserve => 'Pay Code Reserve Position',

@@ -105,6 +105,55 @@ it('recognizes an opening balance into unattributed funds and allocates it to cl
         ->and($clientLedger->getBalanceIntAttribute())->toBe(250_000_00);
 });
 
+it('classifies reconciled liquidity as institution owned and grants it to client funds exactly once', function () {
+    [$clearing, $client] = treasuryOperationPositions();
+    $system = $clearing->principal;
+    $runtime = app(TreasuryPositionOperationContract::class);
+    $institutionOwnedData = app(TreasuryPositionProvisioningContract::class)->provision(
+        $system,
+        treasuryOperationPositionDefinition(
+            principal: $system,
+            purpose: TreasuryPositionPurpose::InstitutionOwnedFunds,
+        ),
+    );
+    $institutionOwned = TreasuryPosition::query()
+        ->where('position_reference', $institutionOwnedData->positionReference)
+        ->sole();
+    $recognition = $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'institution-funds:recognition:statement-1',
+        destinationPositionReference: $clearing->position_reference,
+        amountMinor: 10_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'institution-funds:recognition-key:statement-1',
+        externalReference: 'provider-statement:statement-1',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'institution-funds:classification:statement-1',
+        sourcePositionReference: $clearing->position_reference,
+        destinationPositionReference: $institutionOwned->position_reference,
+        amountMinor: 10_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'institution-funds:classification-key:statement-1',
+        externalReference: $recognition->operationReference,
+    ));
+    $grant = new TreasuryPositionAllocationData(
+        operationReference: 'account-grant:GRANT-001',
+        sourcePositionReference: $institutionOwned->position_reference,
+        destinationPositionReference: $client->position_reference,
+        amountMinor: 1_000_00,
+        currency: 'PHP',
+        idempotencyKey: 'account-grant-key:GRANT-001',
+        externalReference: 'grant-approval:GRANT-001',
+    );
+
+    $first = $runtime->allocate($grant);
+    $replay = $runtime->allocate($grant);
+
+    expect($replay->toArray())->toBe($first->toArray())
+        ->and(Wallet::query()->findOrFail($institutionOwned->internal_ledger_id)->getBalanceIntAttribute())->toBe(9_000_00)
+        ->and(Wallet::query()->findOrFail($client->internal_ledger_id)->getBalanceIntAttribute())->toBe(1_000_00);
+});
+
 it('capitalizes opening funds and reserves Account Funding without using Client Funds', function () {
     [$unattributed] = treasuryOperationPositions(
         TreasuryPositionPurpose::LegacyUnattributed,
