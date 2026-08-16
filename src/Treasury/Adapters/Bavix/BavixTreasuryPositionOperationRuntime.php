@@ -913,6 +913,7 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
             TreasuryPositionPurpose::RoyaltyPayable,
             TreasuryPositionPurpose::TaxPayable,
             TreasuryPositionPurpose::CommercialRevenue,
+            TreasuryPositionPurpose::InstitutionOwnedFunds,
         ];
     }
 

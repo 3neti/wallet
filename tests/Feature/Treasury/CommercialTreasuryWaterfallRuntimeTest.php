@@ -89,6 +89,54 @@ it('charges client funds into commercial clearing and posts one exact waterfall'
         ->and(TreasuryPositionOperation::query()->count())->toBe(7);
 });
 
+it('classifies a governed commercial allocation as institution owned funds', function (): void {
+    $positions = commercialWaterfallPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+
+    $runtime->recognize(new TreasuryPositionRecognitionData(
+        operationReference: 'institution-owned-commercial:recognition',
+        destinationPositionReference: $positions['treasury_clearing']->position_reference,
+        amountMinor: 3_00,
+        currency: 'PHP',
+        idempotencyKey: 'institution-owned-commercial:recognition:key',
+        externalReference: 'provider-observation:institution-owned-commercial',
+    ));
+    $runtime->allocate(new TreasuryPositionAllocationData(
+        operationReference: 'institution-owned-commercial:fund-client',
+        sourcePositionReference: $positions['treasury_clearing']->position_reference,
+        destinationPositionReference: $positions['client_funds']->position_reference,
+        amountMinor: 3_00,
+        currency: 'PHP',
+        idempotencyKey: 'institution-owned-commercial:fund-client:key',
+        externalReference: 'institution-owned-commercial:recognition',
+    ));
+    $runtime->charge(new TreasuryPositionCommercialChargeData(
+        operationReference: 'institution-owned-commercial:charge',
+        sourcePositionReference: $positions['client_funds']->position_reference,
+        destinationPositionReference: $positions['commercial_clearing']->position_reference,
+        amountMinor: 3_00,
+        currency: 'PHP',
+        idempotencyKey: 'institution-owned-commercial:charge:key',
+        externalReference: 'commercial-sale:institution-owned',
+    ));
+    $allocation = new TreasuryPositionAllocationData(
+        operationReference: 'institution-owned-commercial:allocation',
+        sourcePositionReference: $positions['commercial_clearing']->position_reference,
+        destinationPositionReference: $positions['institution_owned']->position_reference,
+        amountMinor: 3_00,
+        currency: 'PHP',
+        idempotencyKey: 'institution-owned-commercial:allocation:key',
+        externalReference: 'commercial-sale:institution-owned',
+    );
+
+    $first = $runtime->allocate($allocation);
+    $replay = $runtime->allocate($allocation);
+
+    expect($replay->toArray())->toBe($first->toArray())
+        ->and(commercialPositionBalance($positions['commercial_clearing']))->toBe(0)
+        ->and(commercialPositionBalance($positions['institution_owned']))->toBe(3_00);
+});
+
 it('reverses a commercial allocation once with an append-only compensating movement', function () {
     $positions = commercialWaterfallPositions();
     $runtime = app(TreasuryPositionOperationContract::class);
@@ -269,6 +317,7 @@ function commercialWaterfallPositions(): array
         'product_revenue' => [$system, TreasuryPositionPurpose::ProductRevenue],
         'partner_commission' => [$partner, TreasuryPositionPurpose::PartnerCommissionPayable],
         'commercial_revenue' => [$system, TreasuryPositionPurpose::CommercialRevenue],
+        'institution_owned' => [$system, TreasuryPositionPurpose::InstitutionOwnedFunds],
     ];
     $positions = [];
 
