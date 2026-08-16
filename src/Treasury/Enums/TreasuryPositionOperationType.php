@@ -16,4 +16,5 @@ enum TreasuryPositionOperationType: string
     case CommercialCharge = 'commercial_charge';
     case CommercialReversal = 'commercial_reversal';
     case PayableSettlement = 'payable_settlement';
+    case InternalPayableSettlement = 'internal_payable_settlement';
 }

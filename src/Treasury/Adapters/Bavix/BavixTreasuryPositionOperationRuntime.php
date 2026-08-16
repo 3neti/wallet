@@ -15,6 +15,7 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDerecognitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionInternalPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayoutRecoveryData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
@@ -687,6 +688,128 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         }
     }
 
+    public function settlePayableInternally(
+        TreasuryPositionInternalPayableSettlementData $settlement,
+    ): TreasuryPositionInternalPayableSettlementData {
+        $this->assertRequest(
+            $settlement->operationReference,
+            $settlement->idempotencyKey,
+            $settlement->amountMinor,
+            $settlement->currency,
+            $settlement->externalReference,
+        );
+
+        if ($settlement->sourcePositionReference === $settlement->destinationPositionReference) {
+            throw new TreasuryInvariantViolation(
+                'Internal payable settlement requires distinct source and destination Positions.',
+            );
+        }
+
+        $requestHash = $this->requestHash(
+            TreasuryPositionOperationType::InternalPayableSettlement,
+            $settlement->toArray(),
+        );
+        $existing = $this->existing(
+            $settlement->idempotencyKey,
+            $requestHash,
+            TreasuryPositionOperationType::InternalPayableSettlement,
+        );
+
+        if ($existing !== null) {
+            return $this->internalPayableSettlementData($existing);
+        }
+
+        try {
+            return DB::transaction(function () use ($settlement, $requestHash): TreasuryPositionInternalPayableSettlementData {
+                $positions = $this->lockedPositions([
+                    $settlement->sourcePositionReference,
+                    $settlement->destinationPositionReference,
+                ]);
+                $source = $positions->get($settlement->sourcePositionReference);
+                $destination = $positions->get($settlement->destinationPositionReference);
+
+                if (! $source instanceof TreasuryPosition || ! $destination instanceof TreasuryPosition) {
+                    throw new TreasuryInvariantViolation('Internal payable settlement Position was not found.');
+                }
+
+                $existing = $this->existing(
+                    $settlement->idempotencyKey,
+                    $requestHash,
+                    TreasuryPositionOperationType::InternalPayableSettlement,
+                    true,
+                );
+
+                if ($existing !== null) {
+                    return $this->internalPayableSettlementData($existing);
+                }
+
+                $this->assertPositionPurpose($source, [
+                    TreasuryPositionPurpose::ProviderCostPayable,
+                    TreasuryPositionPurpose::PartnerCommissionPayable,
+                    TreasuryPositionPurpose::RoyaltyPayable,
+                ], $settlement->currency);
+                $this->assertPositionPurpose(
+                    $destination,
+                    [TreasuryPositionPurpose::ClientFunds],
+                    $settlement->currency,
+                );
+                $this->assertCompatiblePositions($source, $destination);
+                $this->assertOperationReferenceAvailable($settlement->operationReference);
+                $ledgers = $this->lockedLedgers([
+                    (int) $source->internal_ledger_id,
+                    (int) $destination->internal_ledger_id,
+                ]);
+                $sourceLedger = $ledgers->get((int) $source->internal_ledger_id);
+                $destinationLedger = $ledgers->get((int) $destination->internal_ledger_id);
+
+                if (! $sourceLedger instanceof Wallet || ! $destinationLedger instanceof Wallet) {
+                    throw new TreasuryInvariantViolation('Internal payable settlement ledger was not found.');
+                }
+
+                $transfer = $sourceLedger->transfer($destinationLedger, $settlement->amountMinor, [
+                    ...$this->metadataSanitizer->forPersistence($settlement->metadata),
+                    'treasury_position_operation_reference' => $settlement->operationReference,
+                    'treasury_source_position_reference' => $source->position_reference,
+                    'treasury_destination_position_reference' => $destination->position_reference,
+                    'treasury_operation_type' => TreasuryPositionOperationType::InternalPayableSettlement->value,
+                ]);
+                $transfer->loadMissing(['withdraw', 'deposit']);
+
+                return $this->internalPayableSettlementData(TreasuryPositionOperation::query()->create([
+                    'operation_reference' => $settlement->operationReference,
+                    'idempotency_key' => $settlement->idempotencyKey,
+                    'request_hash' => $requestHash,
+                    'operation_type' => TreasuryPositionOperationType::InternalPayableSettlement,
+                    'source_position_id' => $source->getKey(),
+                    'destination_position_id' => $destination->getKey(),
+                    'amount_minor' => $settlement->amountMinor,
+                    'currency' => $settlement->currency,
+                    'external_reference' => $settlement->externalReference,
+                    'transfer_id' => $transfer->getKey(),
+                    'transfer_uuid' => $transfer->uuid,
+                    'source_transaction_id' => $transfer->withdraw->getKey(),
+                    'source_transaction_uuid' => $transfer->withdraw->uuid,
+                    'destination_transaction_id' => $transfer->deposit->getKey(),
+                    'destination_transaction_uuid' => $transfer->deposit->uuid,
+                    'status' => 'committed',
+                    'metadata' => $this->metadataSanitizer->forPersistence($settlement->metadata),
+                ]));
+            }, attempts: 5);
+        } catch (UniqueConstraintViolationException $exception) {
+            $existing = $this->existing(
+                $settlement->idempotencyKey,
+                $requestHash,
+                TreasuryPositionOperationType::InternalPayableSettlement,
+            );
+
+            if ($existing === null) {
+                throw $exception;
+            }
+
+            return $this->internalPayableSettlementData($existing);
+        }
+    }
+
     private function transferPositionBalance(
         TreasuryPositionReservationData|TreasuryPositionReleaseData|TreasuryPositionCommercialChargeData|TreasuryPositionPayoutRecoveryData $movement,
         TreasuryPositionOperationType $type,
@@ -1109,6 +1232,29 @@ final class BavixTreasuryPositionOperationRuntime implements TreasuryPositionOpe
         $operation->loadMissing(['sourcePosition', 'destinationPosition']);
 
         return new TreasuryPositionAllocationData(
+            operationReference: $operation->operation_reference,
+            sourcePositionReference: $operation->sourcePosition->position_reference,
+            destinationPositionReference: $operation->destinationPosition->position_reference,
+            amountMinor: $operation->amount_minor,
+            currency: $operation->currency,
+            idempotencyKey: $operation->idempotency_key,
+            externalReference: $operation->external_reference,
+            transferId: $operation->transfer_id,
+            transferUuid: $operation->transfer_uuid,
+            sourceTransactionId: $operation->source_transaction_id,
+            sourceTransactionUuid: $operation->source_transaction_uuid,
+            destinationTransactionId: $operation->destination_transaction_id,
+            destinationTransactionUuid: $operation->destination_transaction_uuid,
+            metadata: $operation->metadata ?? [],
+        );
+    }
+
+    private function internalPayableSettlementData(
+        TreasuryPositionOperation $operation,
+    ): TreasuryPositionInternalPayableSettlementData {
+        $operation->loadMissing(['sourcePosition', 'destinationPosition']);
+
+        return new TreasuryPositionInternalPayableSettlementData(
             operationReference: $operation->operation_reference,
             sourcePositionReference: $operation->sourcePosition->position_reference,
             destinationPositionReference: $operation->destinationPosition->position_reference,

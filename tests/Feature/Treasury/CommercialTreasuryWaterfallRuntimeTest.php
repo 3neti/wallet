@@ -10,6 +10,7 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryPositionAllocationData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialChargeData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionCommercialReversalData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionDefinitionData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryPositionInternalPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionPayableSettlementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryPositionRecognitionData;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryCustodyMode;
@@ -283,6 +284,64 @@ it('settles an externally evidenced commercial payable exactly once', function (
         ))->toThrow(TreasuryOperationConflict::class, 'different input');
 });
 
+it('settles a governed payable into client funds internally exactly once', function (): void {
+    $positions = commercialWaterfallPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+    seedCommercialWaterfallPayable($runtime, $positions, 5_00);
+    $settlement = new TreasuryPositionInternalPayableSettlementData(
+        operationReference: 'commercial-payable-test:internal-settlement',
+        sourcePositionReference: $positions['provider_cost']->position_reference,
+        destinationPositionReference: $positions['client_funds']->position_reference,
+        amountMinor: 2_00,
+        currency: 'PHP',
+        idempotencyKey: 'commercial-payable-test:internal-settlement:key',
+        externalReference: 'commercial-allocation:provider-cost',
+        metadata: ['designation_authority_hash' => str_repeat('a', 64)],
+    );
+
+    $first = $runtime->settlePayableInternally($settlement);
+    $replay = $runtime->settlePayableInternally($settlement);
+
+    expect($replay->toArray())->toBe($first->toArray())
+        ->and($first->transferUuid)->not->toBeNull()
+        ->and($first->sourceTransactionUuid)->not->toBeNull()
+        ->and($first->destinationTransactionUuid)->not->toBeNull()
+        ->and(commercialPositionBalance($positions['provider_cost']))->toBe(3_00)
+        ->and(commercialPositionBalance($positions['client_funds']))->toBe(2_00)
+        ->and(TreasuryPositionOperation::query()
+            ->where('operation_type', 'internal_payable_settlement')
+            ->count())->toBe(1);
+
+    expect(fn () => $runtime->settlePayableInternally(
+        new TreasuryPositionInternalPayableSettlementData(
+            operationReference: $settlement->operationReference,
+            sourcePositionReference: $settlement->sourcePositionReference,
+            destinationPositionReference: $settlement->destinationPositionReference,
+            amountMinor: 3_00,
+            currency: $settlement->currency,
+            idempotencyKey: $settlement->idempotencyKey,
+            externalReference: $settlement->externalReference,
+        ),
+    ))->toThrow(TreasuryOperationConflict::class, 'reused with different input');
+});
+
+it('keeps Tax Payable outside automatic internal settlement', function (): void {
+    $positions = commercialWaterfallPositions();
+    $runtime = app(TreasuryPositionOperationContract::class);
+
+    expect(fn () => $runtime->settlePayableInternally(
+        new TreasuryPositionInternalPayableSettlementData(
+            operationReference: 'commercial-tax-test:internal-settlement',
+            sourcePositionReference: $positions['tax_payable']->position_reference,
+            destinationPositionReference: $positions['client_funds']->position_reference,
+            amountMinor: 1_00,
+            currency: 'PHP',
+            idempotencyKey: 'commercial-tax-test:internal-settlement:key',
+            externalReference: 'commercial-allocation:tax',
+        ),
+    ))->toThrow(TreasuryInvariantViolation::class, 'not eligible');
+});
+
 it('refuses to settle earned revenue through the payable operation', function () {
     $positions = commercialWaterfallPositions();
     $runtime = app(TreasuryPositionOperationContract::class);
@@ -318,6 +377,7 @@ function commercialWaterfallPositions(): array
         'partner_commission' => [$partner, TreasuryPositionPurpose::PartnerCommissionPayable],
         'commercial_revenue' => [$system, TreasuryPositionPurpose::CommercialRevenue],
         'institution_owned' => [$system, TreasuryPositionPurpose::InstitutionOwnedFunds],
+        'tax_payable' => [$system, TreasuryPositionPurpose::TaxPayable],
     ];
     $positions = [];
 
