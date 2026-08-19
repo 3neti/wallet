@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bavix\Wallet\Models\Transfer;
 use Bavix\Wallet\Models\Wallet;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use LBHurtado\Wallet\Tests\Models\User;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationActivityReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
@@ -287,9 +288,20 @@ it('reverses one draw exactly once and preserves immutable operation evidence', 
 
     $first = $runtime->reverse($reversal);
     $replay = $runtime->reverse($reversal);
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $read = app(TreasuryAllocationReadModelContract::class)->read(
+        new TreasuryAllocationReadModelQueryData('allocation:transit:001', 'php'),
+    );
+    $readQueryCount = count(DB::getQueryLog());
+    DB::disableQueryLog();
 
     expect($replay->toArray())->toBe($first->toArray())
         ->and($first->balanceAfterMinor)->toBe(10_000)
+        ->and($read->drawnAmountMinor)->toBe(0)
+        ->and($read->usableAmountMinor)->toBe(10_000)
+        ->and($read->metadata['operation_count'])->toBe(3)
+        ->and($readQueryCount)->toBe(3)
         ->and(positionBalance($fixture['reserve']))->toBe(10_000)
         ->and(positionBalance($fixture['counterparty']))->toBe(0)
         ->and(fn () => $runtime->reverse(new TreasuryAllocationReversalRequestData(

@@ -29,43 +29,36 @@ final class DatabaseTreasuryAllocationReadModel implements TreasuryAllocationRea
                 'external_reference',
                 'metadata',
             ])
-            ->with(['operations' => fn ($operations) => $operations
-                ->select([
-                    'id',
-                    'allocation_id',
-                    'operation_type',
-                    'reverses_operation_id',
-                    'amount_minor',
-                ])
-                ->orderBy('id')])
             ->where('allocation_reference', $query->allocationReference)
-            ->where('currency', $query->currency)
+            ->where('currency', strtoupper($query->currency))
             ->first();
 
         if ($allocation === null) {
             return $this->absent($query);
         }
 
-        $reversed = $allocation->operations
-            ->where('operation_type', TreasuryAllocationOperationType::Reversal)
-            ->pluck('reverses_operation_id')
-            ->filter()
-            ->all();
-        $effective = $allocation->operations
-            ->reject(fn (TreasuryAllocationOperation $operation): bool => in_array(
-                $operation->getKey(),
-                $reversed,
-                true,
-            ));
-        $drawn = $effective
-            ->where('operation_type', TreasuryAllocationOperationType::Draw)
-            ->sum('amount_minor');
-        $replenished = $effective
-            ->where('operation_type', TreasuryAllocationOperationType::Replenishment)
-            ->sum('amount_minor');
-        $released = $effective
-            ->where('operation_type', TreasuryAllocationOperationType::Release)
-            ->sum('amount_minor');
+        $operationCount = TreasuryAllocationOperation::query()
+            ->whereBelongsTo($allocation, 'allocation')
+            ->where('status', 'committed')
+            ->count();
+        $operationTotals = TreasuryAllocationOperation::query()
+            ->from('treasury_allocation_operations as operations')
+            ->leftJoin(
+                'treasury_allocation_operations as reversals',
+                'reversals.reverses_operation_id',
+                '=',
+                'operations.id',
+            )
+            ->where('operations.allocation_id', $allocation->getKey())
+            ->where('operations.status', 'committed')
+            ->whereNull('reversals.id')
+            ->selectRaw('SUM(CASE WHEN operations.operation_type = ? THEN operations.amount_minor ELSE 0 END) as drawn_minor', [TreasuryAllocationOperationType::Draw->value])
+            ->selectRaw('SUM(CASE WHEN operations.operation_type = ? THEN operations.amount_minor ELSE 0 END) as replenished_minor', [TreasuryAllocationOperationType::Replenishment->value])
+            ->selectRaw('SUM(CASE WHEN operations.operation_type = ? THEN operations.amount_minor ELSE 0 END) as released_minor', [TreasuryAllocationOperationType::Release->value])
+            ->first();
+        $drawn = (int) ($operationTotals?->drawn_minor ?? 0);
+        $replenished = (int) ($operationTotals?->replenished_minor ?? 0);
+        $released = (int) ($operationTotals?->released_minor ?? 0);
         $allocated = $allocation->initial_amount_minor + $replenished;
 
         return new TreasuryAllocationReadModelData(
@@ -88,7 +81,7 @@ final class DatabaseTreasuryAllocationReadModel implements TreasuryAllocationRea
                 'allocation_version' => $allocation->version,
                 'maximum_amount_minor' => $allocation->maximum_amount_minor,
                 'replenishable' => $allocation->replenishable,
-                'operation_count' => $allocation->operations->count(),
+                'operation_count' => $operationCount,
             ],
         );
     }
