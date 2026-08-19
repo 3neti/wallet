@@ -9,13 +9,13 @@ use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationReadModelData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationReadModelQueryData;
 use LBHurtado\Wallet\Treasury\Data\TreasurySliceReadModelData;
 use LBHurtado\Wallet\Treasury\Enums\TreasurySliceSemantics;
-use LBHurtado\Wallet\Treasury\ReadModels\AbsentTreasuryAllocationReadModelService;
+use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryAllocationReadModel;
 
-it('binds a package-neutral absent-facts Allocation read model as a singleton', function () {
+it('binds a package-neutral durable Allocation read model as a singleton', function () {
     $first = app(TreasuryAllocationReadModelContract::class);
     $second = app(TreasuryAllocationReadModelContract::class);
 
-    expect($first)->toBeInstanceOf(AbsentTreasuryAllocationReadModelService::class)
+    expect($first)->toBeInstanceOf(DatabaseTreasuryAllocationReadModel::class)
         ->and($second)->toBe($first);
 });
 

@@ -6,9 +6,11 @@ use Illuminate\Support\ServiceProvider;
 use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
 use LBHurtado\Wallet\Providers\EventServiceProvider;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
+use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryAllocationOperationRuntime;
 use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionOperationRuntime;
 use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionReadModel;
 use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionRuntime;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationPlanningContract;
@@ -19,7 +21,7 @@ use LBHurtado\Wallet\Treasury\Contracts\TreasuryPlanningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionProvisioningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionReadModelContract;
-use LBHurtado\Wallet\Treasury\ReadModels\AbsentTreasuryAllocationReadModelService;
+use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryAllocationReadModel;
 use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryInventoryPositionReadModel;
 use LBHurtado\Wallet\Treasury\ReadModels\WalletBalanceInventoryReadModelService;
 use LBHurtado\Wallet\Treasury\Runtime\DatabaseTreasuryInventoryOperationRuntime;
@@ -84,7 +86,12 @@ class WalletServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             TreasuryAllocationReadModelContract::class,
-            AbsentTreasuryAllocationReadModelService::class
+            DatabaseTreasuryAllocationReadModel::class
+        );
+
+        $this->app->singleton(
+            TreasuryAllocationOperationContract::class,
+            BavixTreasuryAllocationOperationRuntime::class
         );
 
         $this->app->singleton(

@@ -7,6 +7,7 @@ namespace LBHurtado\Wallet\Treasury\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LBHurtado\Wallet\Treasury\Enums\TreasuryPositionOperationType;
+use LBHurtado\Wallet\Treasury\Exceptions\TreasuryImmutableOperation;
 
 final class TreasuryPositionOperation extends Model
 {
@@ -35,6 +36,17 @@ final class TreasuryPositionOperation extends Model
     protected $attributes = [
         'status' => 'committed',
     ];
+
+    protected static function booted(): void
+    {
+        self::updating(function (): never {
+            throw new TreasuryImmutableOperation('Committed Treasury Position operations cannot be updated.');
+        });
+
+        self::deleting(function (): never {
+            throw new TreasuryImmutableOperation('Committed Treasury Position operations cannot be deleted.');
+        });
+    }
 
     protected function casts(): array
     {

@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schema;
 use LBHurtado\Wallet\Actions\TopupWalletAction;
 use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryPositionReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryReadModelContract;
@@ -19,7 +21,25 @@ it('loads every package-owned treasury migration', function () {
         ->and(Schema::hasTable('treasury_inventories'))->toBeTrue()
         ->and(Schema::hasTable('treasury_inventory_operations'))->toBeTrue()
         ->and(Schema::hasTable('treasury_positions'))->toBeTrue()
-        ->and(Schema::hasTable('treasury_position_operations'))->toBeTrue();
+        ->and(Schema::hasTable('treasury_position_operations'))->toBeTrue()
+        ->and(Schema::hasTable('treasury_allocations'))->toBeTrue()
+        ->and(Schema::hasTable('treasury_allocation_operations'))->toBeTrue()
+        ->and(Schema::hasColumns('treasury_allocations', [
+            'allocation_reference',
+            'backing_position_operation_id',
+            'reserve_position_id',
+            'release_position_id',
+            'balance_minor',
+            'version',
+        ]))->toBeTrue()
+        ->and(Schema::hasColumns('treasury_allocation_operations', [
+            'operation_reference',
+            'allocation_id',
+            'reverses_operation_id',
+            'position_operation_id',
+            'balance_before_minor',
+            'balance_after_minor',
+        ]))->toBeTrue();
 });
 
 it('resolves the supported public services through the container', function () {
@@ -35,6 +55,8 @@ it('resolves the supported public services through the container', function () {
 
 it('binds durable treasury contracts on every supported laravel generation', function () {
     $contracts = [
+        TreasuryAllocationOperationContract::class,
+        TreasuryAllocationReadModelContract::class,
         TreasuryInventoryOperationContract::class,
         TreasuryInventoryPositionReadModelContract::class,
         TreasuryInventoryReadModelContract::class,
