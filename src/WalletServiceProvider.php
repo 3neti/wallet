@@ -10,6 +10,7 @@ use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryAllocationOperationRun
 use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionOperationRuntime;
 use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionReadModel;
 use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionRuntime;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationActivityReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
@@ -21,6 +22,7 @@ use LBHurtado\Wallet\Treasury\Contracts\TreasuryPlanningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionProvisioningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionReadModelContract;
+use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryAllocationActivityReadModel;
 use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryAllocationReadModel;
 use LBHurtado\Wallet\Treasury\ReadModels\DatabaseTreasuryInventoryPositionReadModel;
 use LBHurtado\Wallet\Treasury\ReadModels\WalletBalanceInventoryReadModelService;
@@ -82,6 +84,11 @@ class WalletServiceProvider extends ServiceProvider
         $this->app->singleton(
             TreasuryInventoryReadModelContract::class,
             WalletBalanceInventoryReadModelService::class
+        );
+
+        $this->app->singleton(
+            TreasuryAllocationActivityReadModelContract::class,
+            DatabaseTreasuryAllocationActivityReadModel::class
         );
 
         $this->app->singleton(

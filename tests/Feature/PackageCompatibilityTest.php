@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Schema;
 use LBHurtado\Wallet\Actions\TopupWalletAction;
 use LBHurtado\Wallet\Contracts\SystemUserResolverContract;
 use LBHurtado\Wallet\Services\SystemUserResolverService;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationActivityReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
@@ -55,6 +56,7 @@ it('resolves the supported public services through the container', function () {
 
 it('binds durable treasury contracts on every supported laravel generation', function () {
     $contracts = [
+        TreasuryAllocationActivityReadModelContract::class,
         TreasuryAllocationOperationContract::class,
         TreasuryAllocationReadModelContract::class,
         TreasuryInventoryOperationContract::class,

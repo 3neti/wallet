@@ -6,11 +6,13 @@ use Bavix\Wallet\Models\Transfer;
 use Bavix\Wallet\Models\Wallet;
 use Illuminate\Database\Eloquent\Model;
 use LBHurtado\Wallet\Tests\Models\User;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationActivityReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryPositionProvisioningContract;
 use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationActivationData;
+use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationActivityReadModelQueryData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationMovementData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationReadModelQueryData;
 use LBHurtado\Wallet\Treasury\Data\TreasuryAllocationReleaseRequestData;
@@ -190,6 +192,78 @@ it('replenishes within policy and releases the exact remainder to the Reservatio
         ->and($read->drawnAmountMinor)->toBe(2_500)
         ->and($read->releasedAmountMinor)->toBe(12_500)
         ->and($read->usableAmountMinor)->toBe(0);
+});
+
+it('presents paginated Allocation activity without ledger authority references', function () {
+    $fixture = durableAllocationFixture();
+    $runtime = app(TreasuryAllocationOperationContract::class);
+    $runtime->activate($fixture['activation']);
+    $runtime->draw(durableAllocationMovement(
+        operationReference: 'allocation:transit:001:draw:001',
+        idempotencyKey: 'allocation:transit:001:draw:001:key',
+        counterparty: $fixture['counterparty'],
+        amountMinor: 2_500,
+    ));
+    Wallet::query()->findOrFail($fixture['counterparty']->internal_ledger_id)->deposit(1_000);
+    $runtime->replenish(durableAllocationMovement(
+        operationReference: 'allocation:transit:001:replenish:001',
+        idempotencyKey: 'allocation:transit:001:replenish:001:key',
+        counterparty: $fixture['counterparty'],
+        amountMinor: 1_000,
+    ));
+    $runtime->reverse(new TreasuryAllocationReversalRequestData(
+        operationReference: 'allocation:transit:001:reversal:001',
+        allocationReference: 'allocation:transit:001',
+        reversesOperationReference: 'allocation:transit:001:draw:001',
+        currency: 'PHP',
+        idempotencyKey: 'allocation:transit:001:reversal:001:key',
+        externalReference: 'fare:001:reversed',
+    ));
+    $runtime->release(new TreasuryAllocationReleaseRequestData(
+        operationReference: 'allocation:transit:001:release',
+        allocationReference: 'allocation:transit:001',
+        currency: 'PHP',
+        idempotencyKey: 'allocation:transit:001:release:key',
+        externalReference: 'facility:transit:001:closed',
+    ));
+
+    $firstPage = app(TreasuryAllocationActivityReadModelContract::class)->read(
+        new TreasuryAllocationActivityReadModelQueryData(
+            allocationReference: 'allocation:transit:001',
+            currency: 'PHP',
+            page: 1,
+            perPage: 2,
+        ),
+    );
+    $secondPage = app(TreasuryAllocationActivityReadModelContract::class)->read(
+        new TreasuryAllocationActivityReadModelQueryData(
+            allocationReference: 'allocation:transit:001',
+            currency: 'PHP',
+            page: 2,
+            perPage: 2,
+        ),
+    );
+
+    expect($firstPage->hasTreasuryFacts)->toBeTrue()
+        ->and($firstPage->total)->toBe(5)
+        ->and($firstPage->lastPage)->toBe(3)
+        ->and(array_column($firstPage->movements, 'type'))->toBe(['release', 'reversal'])
+        ->and(array_column($secondPage->movements, 'type'))->toBe(['replenishment', 'draw'])
+        ->and($firstPage->toArray())->not->toHaveKeys([
+            'allocationReference',
+            'positionReference',
+            'operationReference',
+            'idempotencyKey',
+            'metadata',
+        ])
+        ->and($firstPage->movements[0]->toArray())->toBe([
+            'type' => 'release',
+            'amountMinor' => 11_000,
+            'currency' => 'PHP',
+            'balanceBeforeMinor' => 11_000,
+            'balanceAfterMinor' => 0,
+            'effectiveAt' => $firstPage->movements[0]->effectiveAt,
+        ]);
 });
 
 it('reverses one draw exactly once and preserves immutable operation evidence', function () {
