@@ -13,6 +13,7 @@ use LBHurtado\Wallet\Treasury\Adapters\Bavix\BavixTreasuryPositionRuntime;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationActivityReadModelContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryAllocationReadModelContract;
+use LBHurtado\Wallet\Treasury\Contracts\TreasuryHoldOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryOperationPlanningContract;
 use LBHurtado\Wallet\Treasury\Contracts\TreasuryInventoryPositionReadModelContract;
@@ -30,6 +31,7 @@ use LBHurtado\Wallet\Treasury\Runtime\DatabaseTreasuryInventoryOperationRuntime;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryInventoryOperationPlanningRuntime;
 use LBHurtado\Wallet\Treasury\Runtime\NullTreasuryPlanningRuntime;
 use LBHurtado\Wallet\Treasury\Services\ConfigTreasuryMetadataSanitizer;
+use LBHurtado\Wallet\Treasury\Services\DurableTreasuryHoldService;
 
 class WalletServiceProvider extends ServiceProvider
 {
@@ -99,6 +101,11 @@ class WalletServiceProvider extends ServiceProvider
         $this->app->singleton(
             TreasuryAllocationOperationContract::class,
             BavixTreasuryAllocationOperationRuntime::class
+        );
+
+        $this->app->singleton(
+            TreasuryHoldOperationContract::class,
+            DurableTreasuryHoldService::class,
         );
 
         $this->app->singleton(
